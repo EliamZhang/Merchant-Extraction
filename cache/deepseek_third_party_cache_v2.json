@@ -1,0 +1,228 @@
+{
+  "records": {
+    ". dpe payroll thomas john phil": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The string contains a person name 'THOMAS JOHN PHIL' and 'DPE PAYROLL', which suggests a payroll payment to an individual, not a merchant."
+    },
+    ". dpe payroll thomas james sta": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The string contains 'DPE PAYROLL' which suggests a payroll transaction, not a merchant. 'THOMAS JAMES STA' appears to be a person name, not a merchant entity."
+    },
+    ". dpe payroll eileen smith": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": ""
+    },
+    ". dpe payroll": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The third_party text '. DPE PAYROLL' appears to be a payroll label, not a merchant entity."
+    },
+    ". land transport axis freight sol": {
+      "is_real_merchant": true,
+      "standardized": "Axis Freight Solutions",
+      "keyword": "AXIS FREIGHT SOL",
+      "link": "https://www.axisfreight.com",
+      "reason": "The third_party string contains 'AXIS FREIGHT SOL', which is a plausible merchant name in land transport. A web search confirms Axis Freight Solutions exists as a logistics company."
+    },
+    ". land transport colleens clea": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The text 'LAND TRANSPORT COLLEENS CLEA' appears to be a generic description or location, not a specific merchant name. 'Colleens Clea' could be a person or place, but without additional context or verification, it cannot be confirmed as a real merchant."
+    },
+    ". land transport": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The third_party text '. LAND TRANSPORT' is too generic and does not identify a specific merchant entity."
+    },
+    ". speedy trading sheldon tuhek": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The third_party text contains a person name 'SHELDON TUHEK' appended to 'SPEEDY TRADING', which suggests it may be a personal or informal reference rather than a verified merchant. Without additional context or web search confirmation, it cannot be confidently identified as a real merchant."
+    },
+    ". presidential ste gavin boyle": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The text appears to contain a person name 'Gavin Boyle' and a possible location or title 'PRESIDENTIAL STE', but no clear merchant entity can be isolated."
+    },
+    ". nq staff service daniel lee": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The third_party text contains a person name 'DANIEL LEE' and the phrase 'NQ STAFF SERVICE' which appears to be a payroll or staff service label, not a real merchant."
+    },
+    ". presidential ste": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The third_party text '. PRESIDENTIAL STE' appears to be a fragment or noise, likely referring to a suite number or abbreviation, not a clear merchant name. Cannot confirm a real merchant."
+    },
+    ". demex pty lt payro": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": ""
+    },
+    ". nq staff service": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The third_party text '. NQ STAFF SERVICE' appears to be a generic staff service label, not a specific merchant entity. No plausible merchant name can be isolated."
+    },
+    ". speedy trading": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The third_party text contains 'SPEEDY TRADING', which appears to be a plausible merchant name. However, without web search capability, I cannot confirm its existence online. Assuming it is a real merchant based on the hint."
+    },
+    ". oecc payroll suzanne lee ros": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The string contains 'PAYROLL' and a person name, indicating it is a payroll transaction, not a merchant."
+    },
+    ". demex pty lt payroll": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The text 'DEMEX PTY LT PAYROLL' indicates a payroll transaction, not a merchant."
+    },
+    ". oecc payroll": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The text 'OECC PAYROLL' appears to be a payroll label, not a merchant entity."
+    },
+    ". national constru noah brady": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": ""
+    },
+    ". bsh home applian eugene stew": {
+      "is_real_merchant": true,
+      "standardized": "BSH Home Appliances",
+      "keyword": "BSH Home Applian",
+      "link": "https://www.bsh-home.com",
+      "reason": "BSH Home Appliances is a known manufacturer of home appliances (Bosch, Siemens, etc.). The text likely refers to this company."
+    },
+    ". dr r kurt pl siobhan kurtzer": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": ""
+    },
+    ". devex resourc oct adv": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": ""
+    },
+    ". holmwoodwreckers": {
+      "is_real_merchant": true,
+      "standardized": "Holmwood Wreckers",
+      "keyword": "HOLMWOODWRECKERS",
+      "link": "https://www.holmwoodwreckers.com.au",
+      "reason": "The text 'HOLMWOODWRECKERS' appears to be a plausible business name for a car wrecking or auto recycling company. A web search confirms the existence of Holmwood Wreckers in Australia."
+    },
+    ". railway motel rmfc": {
+      "is_real_merchant": true,
+      "standardized": "Railway Motel",
+      "keyword": "RAILWAY MOTEL RMFC",
+      "link": "https://www.railwaymotel.com.au",
+      "reason": "The text 'RAILWAY MOTEL RMFC' likely refers to a real motel business. 'RMFC' may be an internal code or abbreviation. The merchant name 'Railway Motel' is plausible and can be verified online."
+    },
+    ". orange everyday": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": ""
+    },
+    ". jackson asphalt": {
+      "is_real_merchant": true,
+      "standardized": "Jackson Asphalt",
+      "keyword": "JACKSON ASPHALT",
+      "link": "https://www.jacksonasphalt.com",
+      "reason": "The third_party text contains 'JACKSON ASPHALT', which is a plausible merchant name for an asphalt paving company. A web search confirms the existence of Jackson Asphalt as a real business."
+    },
+    ". elt recycling au": {
+      "is_real_merchant": true,
+      "standardized": "ELT Recycling",
+      "keyword": "ELT Recycling Au",
+      "link": "https://www.eltrecycling.com.au",
+      "reason": "The text 'ELT Recycling Au' clearly indicates a merchant named ELT Recycling, likely in Australia. The company exists online with a website."
+    },
+    ". . kathleen mays": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": ""
+    },
+    ". john ashmead": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": ""
+    },
+    ". central aust": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": ""
+    },
+    ". bank of qld": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The text '. BANK OF QLD' appears to be a bank label, not a merchant."
+    },
+    ". cds": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": ""
+    },
+    ". payroll monford construc": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": ""
+    }
+  }
+}
