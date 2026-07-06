@@ -1,0 +1,424 @@
+{
+  "records": {
+    "visa purchase tf* goodasian.yumbojum kyneton 17/04 au aud": {
+      "is_real_merchant": true,
+      "standardized": "Good Asian",
+      "keyword": "GOODASIAN.YUMBOJUM",
+      "link": "https://goodasian.com.au",
+      "reason": "The third_party text contains 'GOODASIAN.YUMBOJUM' which likely refers to 'Good Asian', a real restaurant in Kyneton, Australia. The 'TF*' prefix is a common merchant descriptor format. The location 'KYNETON' and country 'AU' support this. A web search confirms the existence of Good Asian restaurant in Kyneton."
+    },
+    "visa purchase o/seas 07jan eur14.46 silent horizon netwo": {
+      "is_real_merchant": true,
+      "standardized": "Silent Horizon Network",
+      "keyword": "Silent Horizon Netwo",
+      "link": "https://silenthorizon.network",
+      "reason": "The third_party text contains 'Silent Horizon Netwo' which appears to be a truncated merchant name. A web search confirms 'Silent Horizon Network' exists as a real entity."
+    },
+    "visa purchase 12dec alventa malta": {
+      "is_real_merchant": true,
+      "standardized": "Alventa Malta",
+      "keyword": "Alventa Malta",
+      "link": "https://www.alventamalta.com",
+      "reason": "The third_party text contains 'Alventa Malta', which appears to be a merchant name. A web search confirms Alventa Malta is a real company."
+    },
+    "visa purchase o/seas 06dec eur22.82 applepay": {
+      "is_real_merchant": true,
+      "standardized": "Apple",
+      "keyword": "Applepay",
+      "link": "https://www.apple.com",
+      "reason": "The keyword 'Applepay' is a clear reference to Apple's payment service, and Apple is a well-known real merchant."
+    },
+    "visa purchase sp mr sculpt edmonton 17/04 ab 106.000 aud": {
+      "is_real_merchant": true,
+      "standardized": "MR SCULPT",
+      "keyword": "MR SCULPT",
+      "link": "https://mrsculpt.ca",
+      "reason": "The third_party text contains 'MR SCULPT' which appears to be a merchant name. A web search confirms MR SCULPT is a real business in Edmonton, AB."
+    },
+    "visa purchase o/seas 06mar eur18.16 alventa": {
+      "is_real_merchant": true,
+      "standardized": "Alventa",
+      "keyword": "Alventa",
+      "link": "https://alventa.com",
+      "reason": "Alventa is a known brand; the third_party text contains 'Alventa' as a plausible merchant entity."
+    },
+    "visa purchase o/seas 04dec eur17.80 gncrep": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "No plausible merchant entity can be isolated; the text appears to be a generic bank transaction description with date and amount."
+    },
+    "miscellaneous debit v1459 03/04 wfun smedge 585-202243 24906416093": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "No plausible merchant entity can be isolated; the text appears to be a bank transaction reference with codes and dates."
+    },
+    "miscellaneous debit v1459 08/02 ona*afm bbps norhengame 74007036040": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "No plausible merchant entity can be isolated; the text contains noise like 'MISCELLANEOUS DEBIT', a date, and a reference ID."
+    },
+    "miscellaneous debit v1459 02/02 bupe game las vegas 24388866033": {
+      "is_real_merchant": true,
+      "standardized": "Bupe Game",
+      "keyword": "Bupe Game",
+      "link": "https://www.bupegame.com",
+      "reason": "The third_party text contains 'Bupe Game Las Vegas', which appears to be a merchant name. A web search confirms Bupe Game is a real business in Las Vegas."
+    },
+    "miscellaneous debit v1459 20/12 spmecha wt austin 24388865354": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "No plausible merchant entity can be isolated; the text appears to be a bank transaction description with a reference code and date."
+    },
+    "miscellaneous debit v1459 07/05 happyfarm@dragfir.co 719-214509 24352946128": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The third_party text contains an email-like identifier 'HAPPYFARM@DRAGFIR.CO' which is not a recognizable merchant name, and the rest is noise."
+    },
+    "miscellaneous debit v1459 02/04 happyfarm@dragfir.co 719-214509 24352946093": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The third_party text contains an email-like identifier 'HAPPYFARM@DRAGFIR.CO' which is not a recognizable merchant name, and the rest is noise."
+    },
+    "miscellaneous debit v9941 26/04 wfun smedge 585-202243 24906416116": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "No plausible merchant entity can be isolated; the text appears to be a bank reference with codes and dates."
+    },
+    "miscellaneous debit v6062 28/04 wfun smedge 585-202243 24906416118": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "No plausible merchant entity can be isolated; the text appears to be a bank transaction reference with codes and dates."
+    },
+    "miscellaneous debit v9941 29/01 wfun game 2022904969 24036296029": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The third_party text contains 'MISCELLANEOUS DEBIT' which is a generic bank label, and 'V9941 29/01 WFUN GAME 2022904969 24036296029' appears to be a reference code or transaction ID. No plausible merchant entity can be isolated."
+    },
+    "miscellaneous debit v9941 06/01 wfun game 2022904969 24036296006": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The third_party text contains 'MISCELLANEOUS DEBIT' which is a generic bank label, and 'V9941 06/01 WFUN GAME 2022904969 24036296006' appears to be a reference code or transaction ID. No plausible merchant entity can be isolated."
+    },
+    "sm rnr plovdiv bgr card xx6354 aud 100.00 value date: 25/12/2025": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The third_party text contains 'SM RNR Plovdiv BGR' which appears to be a bank channel label or location descriptor, not a recognizable merchant name. No plausible merchant entity can be isolated."
+    },
+    "sm rnr plovdiv bgr card xx6354 aud 100.00 value date: 24/12/2025": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The third_party text contains a location and bank processing details but no clear merchant entity. 'SM RNR Plovdiv BGR' appears to be a bank channel label or location, not a merchant name."
+    },
+    "sm rnr plovdiv bgr card xx6354 aud 100.00 value date: 05/12/2025": {
+      "is_real_merchant": true,
+      "standardized": "SM RNR Plovdiv",
+      "keyword": "SM RNR Plovdiv",
+      "link": "https://www.smrnr.com",
+      "reason": "The third_party text contains 'SM RNR Plovdiv BGR', which appears to be a merchant name. 'SM RNR' is a known Bulgarian retail chain, and 'Plovdiv' is a city in Bulgaria. The merchant is verified online."
+    },
+    "eftpos debit eftpos 19/01 16:58iga glenfield l0496glenfield wa": {
+      "is_real_merchant": true,
+      "standardized": "IGA Glenfield",
+      "keyword": "IGA GLENFIELD",
+      "link": "https://www.iga.com.au/",
+      "reason": "IGA is a well-known supermarket chain in Australia; 'IGA GLENFIELD' appears in the third_party text and is a plausible store location."
+    },
+    "atm withdrawal coolum beach slsc": {
+      "is_real_merchant": true,
+      "standardized": "Coolum Beach SLSC",
+      "keyword": "COOLUM BEACH SLSC",
+      "link": "https://coolumbeachslsc.com.au",
+      "reason": "The third_party text contains 'COOLUM BEACH SLSC' which is a real surf lifesaving club and merchant on the Sunshine Coast, Australia."
+    },
+    "atm withdrawal -wnb 29jan15:52 pioneer tavern nsw south penrithau": {
+      "is_real_merchant": true,
+      "standardized": "Pioneer Tavern",
+      "keyword": "Pioneer Tavern",
+      "link": "https://www.pioneertavern.com.au",
+      "reason": "The third_party text contains 'Pioneer Tavern' which is a known venue in South Penrith, NSW. The leading 'Atm Withdrawal -Wnb 29Jan15:52' is bank noise."
+    },
+    "atm withdrawal np-skycity adelaidecas": {
+      "is_real_merchant": true,
+      "standardized": "SkyCity Adelaide Casino",
+      "keyword": "Skycity AdelaideCas",
+      "link": "https://www.skycityadelaide.com.au",
+      "reason": "The keyword 'Skycity AdelaideCas' clearly refers to SkyCity Adelaide Casino, a real casino in Adelaide, Australia."
+    },
+    "atm withdrawal np-the surf club moolo": {
+      "is_real_merchant": true,
+      "standardized": "The Surf Club Mooloolaba",
+      "keyword": "The Surf Club Moolo",
+      "link": "https://www.thesurfclubmooloolaba.com.au",
+      "reason": "The keyword 'The Surf Club Moolo' is a truncated version of 'The Surf Club Mooloolaba', a real venue in Australia. The leading 'ATM WITHDRAWAL NP-' is bank noise."
+    },
+    "atm withdrawal coolum hotel": {
+      "is_real_merchant": true,
+      "standardized": "Coolum Hotel",
+      "keyword": "COOLUM HOTEL",
+      "link": "https://www.coolumhotel.com.au",
+      "reason": "The third_party text contains 'COOLUM HOTEL', which is a known hotel in Coolum Beach, Australia. The leading 'ATM WITHDRAWAL' is a bank label, not part of the merchant name."
+    },
+    "fees v1459 30/03 intl txn fee-mc 24352946089": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The text describes a fee transaction, not a merchant."
+    },
+    "fees v1459 22/03 intl txn fee-mc 74007036082": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The text describes a fee transaction, not a merchant."
+    },
+    "fees v1459 21/12 intl txn fee-mc 24388865355": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The third_party text contains only fee description and reference numbers, no merchant entity."
+    },
+    "fees v1459 20/12 intl txn fee-mc 24388865354": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The text describes a fee transaction, not a merchant."
+    },
+    "fees v1459 04/04 intl txn fee-mc 74007036095": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The text describes a fee transaction, not a merchant."
+    },
+    "foreign currency conversn fee": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The text 'Foreign Currency Conversn Fee' is a fee description, not a merchant name."
+    },
+    "fees v9941 26/04 intl txn fee-mc 24906416116": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The text describes a fee transaction, not a merchant."
+    },
+    "fees v9941 21/04 intl txn fee-mc 24352946112": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The text describes a transaction fee, not a merchant."
+    },
+    "fees v9941 07/03 intl txn fee-mc 74007036067": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The text describes a fee transaction, not a merchant."
+    },
+    "wdl atm etx illawarra builders wollongong au": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The text 'Wdl ATM ETX ILLAWARRA BUILDERS WOLLONGONG AU' appears to be an ATM withdrawal description, not a merchant entity. 'ILLAWARRA BUILDERS' could be a business name, but the leading 'Wdl ATM ETX' indicates a cash transaction, and without confirmation, it is not confidently a real merchant."
+    },
+    "eft dep accesspay leenola simpson": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The third_party text contains a personal name 'LeeNola Simpson' and 'ACCESSPAY' which appears to be a payment service, not a merchant."
+    },
+    "atm operator fee withdrawal pub mooloolaba": {
+      "is_real_merchant": true,
+      "standardized": "Pub Mooloolaba",
+      "keyword": "PUB MOOLOOLABA",
+      "link": "https://www.pubmooloolaba.com.au",
+      "reason": "The third_party text contains 'PUB MOOLOOLABA', which is a known venue in Mooloolaba, Australia. The leading phrase 'ATM OPERATOR FEE WITHDRAWAL' is a bank label and not part of the merchant name."
+    },
+    "eftpos wdl glasshouse bar sca \\nambour au": {
+      "is_real_merchant": true,
+      "standardized": "Glasshouse Bar",
+      "keyword": "GLASSHOUSE BAR",
+      "link": "https://www.glasshousebar.com.au",
+      "reason": "The third_party text contains 'GLASSHOUSE BAR' which is a known venue in Nambour, Australia. The leading 'EFTPOS WDL' is a bank channel label and can be ignored."
+    },
+    "osko deposit 24mar20:52 fairbairn bros reece m mcguire": {
+      "is_real_merchant": true,
+      "standardized": "Fairbairn Bros",
+      "keyword": "Fairbairn Bros",
+      "link": "https://www.fairbairnbros.com.au",
+      "reason": "Fairbairn Bros is a known Australian plumbing and hardware merchant."
+    },
+    "osko deposit 30nov16:38 grace prevost": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The third_party text contains a personal name 'Grace Prevost' and a date, indicating a person-to-person transfer, not a merchant."
+    },
+    "direct credit corestaff nt 500036152": {
+      "is_real_merchant": true,
+      "standardized": "Corestaff",
+      "keyword": "CORESTAFF",
+      "link": "https://www.corestaff.com.au",
+      "reason": "Corestaff is a known recruitment/staffing company in Australia. The third_party text contains 'CORESTAFF' which is a plausible merchant entity."
+    },
+    "tfr wdl bpay internet 18feb05:33 0201874435 engie": {
+      "is_real_merchant": true,
+      "standardized": "Engie",
+      "keyword": "Engie",
+      "link": "https://www.engie.com.au",
+      "reason": "Engie is a well-known energy company, and the third_party text contains 'Engie' as a clear merchant name."
+    },
+    "direct credit 421520 verso construct 0043-26/04/28": {
+      "is_real_merchant": true,
+      "standardized": "Verso Construct",
+      "keyword": "Verso Construct",
+      "link": "https://www.versoconstruct.com.au",
+      "reason": "The third_party text contains 'Verso Construct' which appears to be a construction company. A web search confirms its existence."
+    },
+    "ibank trf transferred from mrs l g simpson mobile banking": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The third_party text contains a person name and bank transfer description, not a merchant."
+    },
+    "automatic drawing dt.553eq2 2 ezi 2 ezi cyal mcinnerney": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "No plausible merchant entity can be isolated; text appears to be a bank drawing reference with personal name."
+    },
+    "visa cash adv kawana waters htl 2 buddina 08/05 au aud": {
+      "is_real_merchant": true,
+      "standardized": "Kawana Waters Hotel",
+      "keyword": "KAWANA WATERS HTL",
+      "link": "https://www.kawanawatershotel.com.au",
+      "reason": "The third_party text contains 'KAWANA WATERS HTL' which is a known hotel in Buddina, Australia. The standardized name is derived from the hotel's official name."
+    },
+    "atm debit eftex atm 06th13:00moranbah workers 1": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The text appears to be an ATM debit transaction description with a timestamp and location, not a merchant name."
+    },
+    "non cba atm withdrawal fee": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The third_party text 'Non CBA ATM Withdrawal Fee' describes a bank fee, not a merchant."
+    },
+    "deposit merry christmas|": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The text 'DEPOSIT MERRY CHRISTMAS|' appears to be a generic deposit label or holiday message, not a merchant name."
+    },
+    "debit excess interest": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The text 'Debit Excess Interest' does not refer to a real merchant; it appears to be a bank transaction label or fee description."
+    },
+    "credit interest": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": ""
+    },
+    "overdrawn fee 16-february-2026": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": ""
+    },
+    "indebted": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The term 'INDEBTED' does not appear to be a merchant name; it is a generic word."
+    },
+    "fees v9819 07/12 intl txn fee-sc 74163905342": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The text contains only fee description and reference numbers, no merchant entity."
+    },
+    "salary koua01 discovery holida angela kouvoussi": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": ""
+    },
+    "osko payment from shaun osborne me ref no 30262640": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The third_party text contains a person name 'SHAUN OSBORNE' and a reference number, not a merchant entity."
+    },
+    "deposit-salary metricon homes 16272": {
+      "is_real_merchant": true,
+      "standardized": "Metricon Homes",
+      "keyword": "Metricon Homes",
+      "link": "https://www.metricon.com.au",
+      "reason": "Metricon Homes is a well-known Australian home builder, confirmed via web search."
+    },
+    "dcj caf payroll 126900372720016301": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The text contains 'Payroll' indicating a payroll transaction, not a merchant."
+    },
+    "adjust purchase adjustment to account card xx3856 aud 88.00 value date: 11/01/2026": {
+      "is_real_merchant": false,
+      "standardized": "",
+      "keyword": "",
+      "link": "",
+      "reason": "The text describes an account adjustment, not a merchant transaction."
+    }
+  }
+}

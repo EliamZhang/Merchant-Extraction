@@ -16,6 +16,7 @@ from urllib import error, request
 DEFAULT_INPUT = Path("third_party_dedup.csv")
 DEFAULT_OUTPUT = Path("output/third_party_dedup_verified.csv")
 DEFAULT_CACHE = Path("cache/deepseek_third_party_cache_v3.json")
+DEFAULT_MERCHANT_KB = Path("merchant_kb.csv")
 EMPTY_FIELDS = ("standardized", "keyword", "link")
 GENERIC_TRANSFER_PREFIXES = (
     "osko payment",
@@ -424,6 +425,53 @@ class CacheStore:
         self.records[canonical_value] = asdict(decision)
 
 
+@dataclass
+class KnowledgeBaseEntry:
+    merchant_name: str
+    keyword: str
+    normalized_keyword: str
+    first_token: str
+
+
+def load_merchant_kb(path: Path) -> list[KnowledgeBaseEntry]:
+    if not path.exists():
+        return []
+    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        entries: list[KnowledgeBaseEntry] = []
+        seen: set[tuple[str, str]] = set()
+        for row in reader:
+            merchant_name = normalize_space(row.get("merchant_name", ""))
+            keyword = normalize_space(row.get("keyword", ""))
+            normalized_keyword = normalize_search_text(keyword)
+            if not merchant_name or not keyword or not normalized_keyword:
+                continue
+            tokens = normalized_keyword.split()
+            if not tokens:
+                continue
+            dedup_key = (merchant_name.casefold(), normalized_keyword)
+            if dedup_key in seen:
+                continue
+            seen.add(dedup_key)
+            entries.append(
+                KnowledgeBaseEntry(
+                    merchant_name=merchant_name,
+                    keyword=keyword,
+                    normalized_keyword=normalized_keyword,
+                    first_token=tokens[0],
+                )
+            )
+    entries.sort(
+        key=lambda entry: (
+            len(entry.normalized_keyword.split()),
+            len(entry.normalized_keyword),
+            len(entry.merchant_name),
+        ),
+        reverse=True,
+    )
+    return entries
+
+
 def load_rows(path: Path, row_limit: int | None = None) -> tuple[list[dict[str, str]], list[str]]:
     with path.open("r", encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
@@ -491,6 +539,13 @@ def process_file(args: argparse.Namespace) -> None:
         canonical = normalize_space(raw_value).casefold()
         exact_groups.setdefault(canonical, []).append(idx)
 
+    token_sets = [set(tokens) for tokens in tokenized_rows]
+
+    kb_entries = load_merchant_kb(args.merchant_kb) if args.merchant_kb else []
+    kb_entries_by_first_token: dict[str, list[KnowledgeBaseEntry]] = {}
+    for entry in kb_entries:
+        kb_entries_by_first_token.setdefault(entry.first_token, []).append(entry)
+
     prefix_counts: dict[str, int] = {}
     for tokens in tokenized_rows:
         upper = min(4, len(tokens))
@@ -516,6 +571,7 @@ def process_file(args: argparse.Namespace) -> None:
         "api_calls": 0,
         "keyword_batches": 0,
         "cached_hits": 0,
+        "kb_hits": 0,
     }
 
     def mark_processed(index: int, decision: MerchantDecision | None = None) -> None:
@@ -554,6 +610,57 @@ def process_file(args: argparse.Namespace) -> None:
                 mark_processed(idx, None)
                 matched += 1
         return matched
+
+    if kb_entries:
+        print(f"Knowledge base loaded. path={args.merchant_kb} entries={len(kb_entries)}", flush=True)
+        for idx, row in enumerate(rows):
+            if processed[idx]:
+                continue
+            candidate_entries: list[KnowledgeBaseEntry] = []
+            seen_entry_keys: set[tuple[str, str]] = set()
+            for token in token_sets[idx]:
+                for entry in kb_entries_by_first_token.get(token, []):
+                    entry_key = (entry.merchant_name.casefold(), entry.normalized_keyword)
+                    if entry_key in seen_entry_keys:
+                        continue
+                    seen_entry_keys.add(entry_key)
+                    candidate_entries.append(entry)
+            if not candidate_entries:
+                continue
+            search_text = searchable_rows[idx]
+            best_entry: KnowledgeBaseEntry | None = None
+            for entry in candidate_entries:
+                if entry.normalized_keyword in search_text:
+                    if best_entry is None or (
+                        len(entry.normalized_keyword.split()),
+                        len(entry.normalized_keyword),
+                        len(entry.merchant_name),
+                    ) > (
+                        len(best_entry.normalized_keyword.split()),
+                        len(best_entry.normalized_keyword),
+                        len(best_entry.merchant_name),
+                    ):
+                        best_entry = entry
+            if best_entry is None:
+                continue
+            literal_keyword = extract_literal_substring(row.get("third_party", ""), best_entry.keyword)
+            if not literal_keyword:
+                continue
+            decision = MerchantDecision(
+                is_real_merchant=True,
+                standardized=best_entry.merchant_name,
+                keyword=literal_keyword,
+                link="",
+                reason="matched_merchant_kb",
+            )
+            canonical_value = normalize_space(row.get("third_party", "")).casefold()
+            matched = apply_decision(canonical_value, decision)
+            if matched:
+                stats["kb_hits"] += 1
+        print(
+            f"Knowledge base applied. kb_hits={stats['kb_hits']} rows_processed={stats['rows_processed']}/{stats['rows_total']}",
+            flush=True,
+        )
 
     for canonical_value in list(cache_store.records):
         decision = cache_store.get(canonical_value)
@@ -657,7 +764,8 @@ def process_file(args: argparse.Namespace) -> None:
     print(
         f"Finished. rows={stats['rows_total']} processed={stats['rows_processed']} "
         f"api_calls={stats['api_calls']} keyword_batches={stats['keyword_batches']} "
-        f"cached_hits={stats['cached_hits']} elapsed={format_seconds(elapsed)} output={args.output}",
+        f"cached_hits={stats['cached_hits']} kb_hits={stats['kb_hits']} "
+        f"elapsed={format_seconds(elapsed)} output={args.output}",
         flush=True,
     )
 
@@ -678,6 +786,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--input", type=Path, default=DEFAULT_INPUT)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--cache", type=Path, default=DEFAULT_CACHE)
+    parser.add_argument("--merchant-kb", type=Path, default=DEFAULT_MERCHANT_KB)
     parser.add_argument("--base-url", default=os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"))
     parser.add_argument("--model", default=os.environ.get("DEEPSEEK_MODEL", "deepseek-chat"))
     parser.add_argument("--api-key", default=os.environ.get("DEEPSEEK_API_KEY", ""))
