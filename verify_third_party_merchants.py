@@ -292,13 +292,16 @@ class MerchantPromptConfig:
             "Return JSON only with keys: is_real_merchant, standardized, keyword, link, reason.\n"
             "Rules:\n"
             "- standardized: official or commonly accepted merchant name, without bank noise.\n"
-            "- keyword: copy a literal phrase directly from the provided third_party text. Do not rewrite, normalize, translate, or invent it.\n"
+            "- keyword: copy the shortest distinctive merchant phrase directly from the provided third_party text. Do not rewrite, normalize, translate, or invent it.\n"
             "- keyword must come from third_party itself, but standardized can be normalized.\n"
+            "- keyword should keep only the merchant-identifying span needed for matching similar rows.\n"
+            "- Exclude trailing or leading location text, suburb/state/country abbreviations, store numbers, terminal IDs, card numbers, dates, times, and reference IDs unless they are clearly part of the official merchant name.\n"
             "- link: best verification URL, prefer official website, otherwise Google Maps or another reliable directory.\n"
             "- If the value is empty, personal, invalid, generic, or not a merchant, set false and keep all fields blank.\n"
             "- Example: 'One Click Life OCNxtDy745U' can map to standardized='One Click Life' if that merchant is real.\n"
             "- Example: 'ACCESSABILITY WA LISA PITCHE' can map to standardized='Accessability WA' if that merchant is real.\n"
             "- Example: 'CASH CONVERTERS CCS Perth WA AUS C' should use keyword='CASH CONVERTERS' and standardized='Cash Converters'.\n"
+            "- Example: 'EFTPOS DEBIT 20NOV20:43 Lmf Games & Amusementsnorthmead Nswau' should use keyword='Lmf Games & Amusements' and standardized='LMF Games & Amusements'.\n"
             f"{hint_line}"
             f"third_party: {json.dumps(third_party_value, ensure_ascii=False)}"
         )
@@ -441,11 +444,23 @@ class CacheStore:
         else:
             self.records = {}
 
-    def save(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+    def save(self) -> bool:
+        target_path = self.path.resolve()
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = target_path.with_name(f"{target_path.name}.{os.getpid()}.tmp")
         payload = {"records": self.records}
-        with self.path.open("w", encoding="utf-8") as handle:
-            json.dump(payload, handle, ensure_ascii=False, indent=2)
+        try:
+            with temp_path.open("w", encoding="utf-8") as handle:
+                json.dump(payload, handle, ensure_ascii=False, indent=2)
+            temp_path.replace(target_path)
+            return True
+        except OSError as exc:
+            print(f"Warning: failed to save cache path={target_path}: {exc}", flush=True)
+            try:
+                temp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            return False
 
     def get(self, canonical_value: str) -> MerchantDecision | None:
         payload = self.records.get(canonical_value)
@@ -464,6 +479,7 @@ class CacheStore:
 class KnowledgeBaseEntry:
     merchant_name: str
     keyword: str
+    link: str
     normalized_keyword: str
     first_token: str
 
@@ -476,9 +492,10 @@ KB_FIELDNAMES = [
     "merchant_source",
     "keyword_id",
     "keyword",
+    "link",
     "normalized_keyword",
     "keyword_source",
-    "keyword_created_at",
+    "merchant_name_created_at",
     "keyword_updated_at",
 ]
 
@@ -487,6 +504,7 @@ KB_FIELDNAMES = [
 class MerchantKBCandidate:
     merchant_name: str
     keyword: str
+    link: str
 
 
 @dataclass
@@ -511,17 +529,35 @@ class MerchantKBUpdater:
         existing_keys: set[tuple[str, str]] = set()
         existing_names: set[str] = set()
         display_name_by_normalized: dict[str, str] = {}
+        merchant_created_at_by_normalized: dict[str, str] = {}
         merchant_ids_by_name: dict[str, int] = {}
         max_merchant_id = 0
         max_keyword_id = 0
         fieldnames = list(KB_FIELDNAMES)
+        existing_rows: list[dict[str, str]] = []
+        needs_rewrite = False
 
         if self.path.exists():
             with self.path.open("r", encoding="utf-8-sig", newline="") as handle:
                 reader = csv.DictReader(handle)
                 if reader.fieldnames:
-                    fieldnames = list(reader.fieldnames)
+                    fieldnames = []
+                    for field in reader.fieldnames:
+                        normalized_field = "merchant_name_created_at" if field == "keyword_created_at" else field
+                        if normalized_field not in fieldnames:
+                            fieldnames.append(normalized_field)
+                    if "link" not in fieldnames:
+                        keyword_index = fieldnames.index("keyword") if "keyword" in fieldnames else len(fieldnames) - 1
+                        fieldnames.insert(keyword_index + 1, "link")
+                        needs_rewrite = True
+                    if "keyword_created_at" in reader.fieldnames:
+                        needs_rewrite = True
                 for row in reader:
+                    normalized_row = {
+                        ("merchant_name_created_at" if key == "keyword_created_at" else key): (value or "")
+                        for key, value in row.items()
+                    }
+                    existing_rows.append(normalized_row)
                     normalized_name = normalize_search_text(row.get("merchant_name", ""))
                     normalized_keyword = normalize_search_text(row.get("keyword", ""))
                     if normalized_name and normalized_keyword:
@@ -530,6 +566,16 @@ class MerchantKBUpdater:
                     if merchant_name and normalized_name:
                         existing_names.add(normalized_name)
                         display_name_by_normalized.setdefault(normalized_name, merchant_name)
+                        merchant_created_at = normalize_space(
+                            row.get("merchant_name_created_at", "")
+                            or row.get("keyword_created_at", "")
+                            or row.get("keyword_updated_at", "")
+                        )
+                        existing_created_at = merchant_created_at_by_normalized.get(normalized_name)
+                        if merchant_created_at and (
+                            existing_created_at is None or merchant_created_at < existing_created_at
+                        ):
+                            merchant_created_at_by_normalized[normalized_name] = merchant_created_at
                         merchant_id_raw = normalize_space(row.get("merchant_id", "0"))
                         try:
                             merchant_id = int(merchant_id_raw)
@@ -545,50 +591,79 @@ class MerchantKBUpdater:
                         keyword_id = 0
                     max_keyword_id = max(max_keyword_id, keyword_id)
 
+        if needs_rewrite:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            with self.path.open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=fieldnames)
+                writer.writeheader()
+                for row in existing_rows:
+                    writer.writerow({field: row.get(field, "") for field in fieldnames})
+
         timestamp = utc_timestamp_now()
         rows_to_append: list[dict[str, str]] = []
         for candidate in candidates:
             merchant_name = normalize_space(candidate.merchant_name)
             keyword = normalize_space(candidate.keyword)
+            link = safe_url(candidate.link)
             normalized_name = normalize_search_text(merchant_name)
-            normalized_keyword = normalize_search_text(keyword)
-            if not merchant_name or not keyword or not normalized_name or not normalized_keyword:
+            if not merchant_name or not keyword or not normalized_name:
                 result.skipped_invalid += 1
                 continue
-            dedup_key = (normalized_name, normalized_keyword)
-            if dedup_key in existing_keys:
-                result.skipped_duplicates += 1
+
+            keywords_to_add: list[tuple[str, str]] = []
+            seen_keywords_for_candidate: set[str] = set()
+            for candidate_keyword in (keyword, merchant_name):
+                normalized_keyword = normalize_search_text(candidate_keyword)
+                if not normalized_keyword or normalized_keyword in seen_keywords_for_candidate:
+                    continue
+                seen_keywords_for_candidate.add(normalized_keyword)
+                keywords_to_add.append((normalize_space(candidate_keyword), normalized_keyword))
+
+            if not keywords_to_add:
+                result.skipped_invalid += 1
                 continue
-            existing_keys.add(dedup_key)
+
             is_existing_merchant = normalized_name in existing_names
             if is_existing_merchant:
-                result.existing_merchant_keywords_added += 1
                 merchant_name = display_name_by_normalized.get(normalized_name, merchant_name)
+                merchant_created_at = merchant_created_at_by_normalized.get(normalized_name, timestamp)
             else:
                 result.new_merchants_added += 1
                 existing_names.add(normalized_name)
                 display_name_by_normalized[normalized_name] = merchant_name
+                merchant_created_at = timestamp
+                merchant_created_at_by_normalized[normalized_name] = merchant_created_at
 
             merchant_id = merchant_ids_by_name.get(merchant_name.casefold())
             if merchant_id is None:
                 max_merchant_id += 1
                 merchant_id = max_merchant_id
                 merchant_ids_by_name[merchant_name.casefold()] = merchant_id
-            max_keyword_id += 1
-            values = {
-                "merchant_id": str(merchant_id),
-                "merchant_name": merchant_name,
-                "normalized_name": normalized_name.upper(),
-                "merchant_status": "active",
-                "merchant_source": "ai_verified",
-                "keyword_id": str(max_keyword_id),
-                "keyword": keyword,
-                "normalized_keyword": normalized_keyword.upper(),
-                "keyword_source": "ai_verified:verify_third_party_merchants.py",
-                "keyword_created_at": timestamp,
-                "keyword_updated_at": timestamp,
-            }
-            rows_to_append.append({field: values.get(field, "") for field in fieldnames})
+            for keyword_value, normalized_keyword in keywords_to_add:
+                dedup_key = (normalized_name, normalized_keyword)
+                if dedup_key in existing_keys:
+                    result.skipped_duplicates += 1
+                    continue
+                existing_keys.add(dedup_key)
+                if is_existing_merchant:
+                    result.existing_merchant_keywords_added += 1
+                max_keyword_id += 1
+                values = {
+                    "merchant_id": str(merchant_id),
+                    "merchant_name": merchant_name,
+                    "normalized_name": normalized_name.upper(),
+                    "merchant_status": "active",
+                    "merchant_source": "ai_verified",
+                    "keyword_id": str(max_keyword_id),
+                    "keyword": keyword_value,
+                    "link": link,
+                    "normalized_keyword": normalized_keyword.upper(),
+                    "keyword_source": "ai_verified:verify_third_party_merchants.py",
+                    "merchant_name_created_at": merchant_created_at,
+                    "keyword_created_at": merchant_created_at,
+                    "keyword_updated_at": timestamp,
+                }
+                rows_to_append.append({field: values.get(field, "") for field in fieldnames})
 
         if not rows_to_append:
             return result
@@ -653,6 +728,7 @@ def load_merchant_kb(path: Path) -> list[KnowledgeBaseEntry]:
         for row in reader:
             merchant_name = normalize_space(row.get("merchant_name", ""))
             keyword = normalize_space(row.get("keyword", ""))
+            link = safe_url(row.get("link", ""))
             normalized_keyword = normalize_search_text(keyword)
             if not merchant_name or not keyword or not normalized_keyword:
                 continue
@@ -667,6 +743,7 @@ def load_merchant_kb(path: Path) -> list[KnowledgeBaseEntry]:
                 KnowledgeBaseEntry(
                     merchant_name=merchant_name,
                     keyword=keyword,
+                    link=link,
                     normalized_keyword=normalized_keyword,
                     first_token=tokens[0],
                 )
@@ -744,7 +821,7 @@ def process_file(args: argparse.Namespace) -> None:
     checkpoint_path = args.checkpoint_output or default_checkpoint_path(args.output)
     print(
         f"Start. input={args.input} rows={len(rows)} output={args.output} cache={args.cache} "
-        f"checkpoint={checkpoint_path}",
+        f"checkpoint={checkpoint_path} merchant_kb_save_every={args.merchant_kb_save_every}",
         flush=True,
     )
 
@@ -813,7 +890,7 @@ def process_file(args: argparse.Namespace) -> None:
         "kb_ai_duplicates": 0,
         "kb_ai_invalid": 0,
     }
-    ai_kb_candidates: list[MerchantKBCandidate] = []
+    pending_ai_kb_candidates: list[MerchantKBCandidate] = []
     checkpoint_written_at_call = -1
 
     def mark_processed(
@@ -874,9 +951,28 @@ def process_file(args: argparse.Namespace) -> None:
         checkpoint_written_at_call = stats["api_calls"]
         print(f"Checkpoint written. path={checkpoint_path}", flush=True)
 
+    def flush_pending_merchant_kb(reason: str) -> None:
+        if not args.update_merchant_kb or not pending_ai_kb_candidates:
+            return
+        kb_update = MerchantKBUpdater(args.merchant_kb).append_ai_results(pending_ai_kb_candidates)
+        stats["kb_ai_appended"] += kb_update.appended
+        stats["kb_existing_merchant_keywords_added"] += kb_update.existing_merchant_keywords_added
+        stats["kb_new_merchants_added"] += kb_update.new_merchants_added
+        stats["kb_ai_duplicates"] += kb_update.skipped_duplicates
+        stats["kb_ai_invalid"] += kb_update.skipped_invalid
+        print(
+            f"Merchant KB updated ({reason}). candidates={kb_update.candidates_seen} appended={kb_update.appended} "
+            f"existing_merchant_keywords_added={kb_update.existing_merchant_keywords_added} "
+            f"new_merchants_added={kb_update.new_merchants_added} "
+            f"duplicates={kb_update.skipped_duplicates} invalid={kb_update.skipped_invalid} path={args.merchant_kb}",
+            flush=True,
+        )
+        pending_ai_kb_candidates.clear()
+
     def flush_checkpoint_on_exit() -> None:
         if stats["api_calls"] <= 0:
             return
+        flush_pending_merchant_kb("exit")
         if stats["api_calls"] == checkpoint_written_at_call:
             return
         cache_store.save()
@@ -923,7 +1019,7 @@ def process_file(args: argparse.Namespace) -> None:
                 is_real_merchant=True,
                 standardized=best_entry.merchant_name,
                 keyword=literal_keyword,
-                link="",
+                link=best_entry.link,
                 reason="matched_merchant_kb",
             )
             canonical_value = normalize_space(row.get("third_party", "")).casefold()
@@ -1024,10 +1120,11 @@ def process_file(args: argparse.Namespace) -> None:
             matched_from_third_party=raw_value,
         )
         if decision.is_real_merchant and matched:
-            ai_kb_candidates.append(
+            pending_ai_kb_candidates.append(
                 MerchantKBCandidate(
                     merchant_name=decision.standardized,
                     keyword=decision.keyword,
+                    link=decision.link,
                 )
             )
 
@@ -1048,6 +1145,9 @@ def process_file(args: argparse.Namespace) -> None:
         if args.checkpoint_every and stats["api_calls"] % args.checkpoint_every == 0:
             write_checkpoint()
 
+        if args.merchant_kb_save_every and stats["api_calls"] % args.merchant_kb_save_every == 0:
+            flush_pending_merchant_kb("periodic")
+
         if args.progress_every and stats["api_calls"] % args.progress_every == 0:
             elapsed = time.time() - started_at
             calls_per_minute = (stats["api_calls"] / elapsed * 60) if elapsed > 0 else 0.0
@@ -1065,20 +1165,7 @@ def process_file(args: argparse.Namespace) -> None:
             mark_processed(idx, None, match_source=MatchSource.UNRESOLVED)
 
     cache_store.save()
-    if args.update_merchant_kb:
-        kb_update = MerchantKBUpdater(args.merchant_kb).append_ai_results(ai_kb_candidates)
-        stats["kb_ai_appended"] = kb_update.appended
-        stats["kb_existing_merchant_keywords_added"] = kb_update.existing_merchant_keywords_added
-        stats["kb_new_merchants_added"] = kb_update.new_merchants_added
-        stats["kb_ai_duplicates"] = kb_update.skipped_duplicates
-        stats["kb_ai_invalid"] = kb_update.skipped_invalid
-        print(
-            f"Merchant KB updated. candidates={kb_update.candidates_seen} appended={kb_update.appended} "
-            f"existing_merchant_keywords_added={kb_update.existing_merchant_keywords_added} "
-            f"new_merchants_added={kb_update.new_merchants_added} "
-            f"duplicates={kb_update.skipped_duplicates} invalid={kb_update.skipped_invalid} path={args.merchant_kb}",
-            flush=True,
-        )
+    flush_pending_merchant_kb("final")
     write_rows(args.output, rows, fieldnames)
     atexit.unregister(flush_checkpoint_on_exit)
     elapsed = time.time() - started_at
@@ -1123,6 +1210,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         dest="update_merchant_kb",
         help="Disable merchant_kb.csv updates for this run.",
     )
+    parser.add_argument(
+        "--merchant-kb-save-every",
+        type=int,
+        default=20,
+        help="Append pending AI-verified merchant keywords to merchant_kb.csv every N API calls. Use 0 to write only at the end.",
+    )
     parser.add_argument("--base-url", default=os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"))
     parser.add_argument("--model", default=os.environ.get("DEEPSEEK_MODEL", "deepseek-chat"))
     parser.add_argument("--api-key", default=os.environ.get("DEEPSEEK_API_KEY", ""))
@@ -1160,6 +1253,8 @@ def main() -> int:
         parser.error("Missing DeepSeek API key. Set DEEPSEEK_API_KEY or pass --api-key.")
     if args.max_retries < 1:
         parser.error("--max-retries must be at least 1.")
+    if args.merchant_kb_save_every < 0:
+        parser.error("--merchant-kb-save-every must be 0 or greater.")
     if args.checkpoint_every < 0:
         parser.error("--checkpoint-every must be 0 or greater.")
     process_file(args)
