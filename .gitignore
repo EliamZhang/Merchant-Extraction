@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+*.checkpoint.csv
+output/*.checkpoint.csv
