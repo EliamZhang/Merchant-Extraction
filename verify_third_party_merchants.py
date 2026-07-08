@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import atexit
 import csv
+import io
 import json
 import os
 import re
@@ -18,7 +19,7 @@ from urllib import error, request
 
 DEFAULT_INPUT = Path("third_party_dedup.csv")
 DEFAULT_OUTPUT = Path("output/third_party_dedup_verified.csv")
-DEFAULT_CACHE = Path("cache/deepseek_third_party_cache_v3.json")
+DEFAULT_CACHE = Path("cache/third_party_merchant_verification_cache.json")
 DEFAULT_MERCHANT_KB = Path("merchant_kb.csv")
 CHINA_TIMEZONE = timezone(timedelta(hours=8))
 EMPTY_FIELDS = ("standardized", "keyword", "link")
@@ -114,20 +115,11 @@ def clean_output_value(value: str) -> str:
     return normalize_space(value).strip('"').strip("'")
 
 
-def shorten_text(value: str, max_len: int = 72) -> str:
+def shorten_text(value: str, max_len: int = 80) -> str:
     text = normalize_space(value)
     if len(text) <= max_len:
         return text
     return f"{text[: max_len - 3]}..."
-
-
-def format_seconds(seconds: float) -> str:
-    total_seconds = max(0, int(seconds))
-    hours, remainder = divmod(total_seconds, 3600)
-    minutes, secs = divmod(remainder, 60)
-    if hours:
-        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
-    return f"{minutes:02d}:{secs:02d}"
 
 
 def extract_literal_substring(raw_value: str, candidate: str) -> str:
@@ -342,7 +334,6 @@ class DeepSeekClient:
         timeout_seconds: int,
         max_retries: int,
         retry_delay_seconds: float,
-        extra_body: dict[str, Any] | None = None,
         prompt_config: MerchantPromptConfig | None = None,
         response_validator: MerchantResponseValidator | None = None,
     ) -> None:
@@ -352,7 +343,6 @@ class DeepSeekClient:
         self.timeout_seconds = timeout_seconds
         self.max_retries = max_retries
         self.retry_delay_seconds = retry_delay_seconds
-        self.extra_body = extra_body or {}
         self.prompt_config = prompt_config or MerchantPromptConfig()
         self.response_validator = response_validator or MerchantResponseValidator()
 
@@ -378,38 +368,20 @@ class DeepSeekClient:
             "temperature": 0,
             "response_format": {"type": "json_object"},
         }
-        body.update(self.extra_body)
 
         last_error: Exception | None = None
         for attempt in range(1, self.max_retries + 1):
-            for payload in self._request_variants(body):
-                try:
-                    response_json = self._post_json("/chat/completions", payload)
-                    message = response_json["choices"][0]["message"]["content"]
-                    return self.response_validator.parse(text_value, message)
-                except Exception as exc:  # noqa: BLE001
-                    last_error = exc
-                    if not self._should_try_fallback_variant(exc, payload):
-                        break
+            try:
+                response_json = self._post_json("/chat/completions", body)
+                message = response_json["choices"][0]["message"]["content"]
+                return self.response_validator.parse(text_value, message)
+            except Exception as exc:  # noqa: BLE001
+                last_error = exc
             if attempt >= self.max_retries:
                 break
             time.sleep(self.retry_delay_seconds * attempt)
 
         return MerchantDecision.empty(reason=f"verification_failed: {last_error}")
-
-    def _request_variants(self, body: dict[str, Any]) -> list[dict[str, Any]]:
-        variants = [body]
-        if "response_format" in body:
-            fallback = dict(body)
-            fallback.pop("response_format", None)
-            variants.append(fallback)
-        return variants
-
-    def _should_try_fallback_variant(self, exc: Exception, payload: dict[str, Any]) -> bool:
-        if "response_format" not in payload:
-            return False
-        message = str(exc).casefold()
-        return "response_format" in message or "unsupported" in message or "invalid" in message
 
     def _post_json(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         url = f"{self.base_url}{path}"
@@ -498,24 +470,13 @@ class MerchantKBCandidate:
     link: str
 
 
-@dataclass
-class MerchantKBUpdateResult:
-    candidates_seen: int = 0
-    appended: int = 0
-    existing_merchant_keywords_added: int = 0
-    new_merchants_added: int = 0
-    skipped_duplicates: int = 0
-    skipped_invalid: int = 0
-
-
 class MerchantKBUpdater:
     def __init__(self, path: Path) -> None:
         self.path = path
 
-    def append_ai_results(self, candidates: list[MerchantKBCandidate]) -> MerchantKBUpdateResult:
-        result = MerchantKBUpdateResult(candidates_seen=len(candidates))
+    def append_ai_results(self, candidates: list[MerchantKBCandidate]) -> None:
         if not candidates:
-            return result
+            return
 
         existing_keys: set[tuple[str, str]] = set()
         existing_names: set[str] = set()
@@ -542,7 +503,6 @@ class MerchantKBUpdater:
             link = safe_url(candidate.link)
             normalized_name = normalize_search_text(merchant_name)
             if not merchant_name or not keyword or not normalized_name:
-                result.skipped_invalid += 1
                 continue
 
             keywords_to_add: list[tuple[str, str]] = []
@@ -555,12 +515,10 @@ class MerchantKBUpdater:
                 keywords_to_add.append((normalize_space(candidate_keyword), normalized_keyword))
 
             if not keywords_to_add:
-                result.skipped_invalid += 1
                 continue
 
             is_new_merchant = normalized_name not in existing_names
             if is_new_merchant:
-                result.new_merchants_added += 1
                 existing_names.add(normalized_name)
                 display_name_by_normalized[normalized_name] = merchant_name
             else:
@@ -568,11 +526,8 @@ class MerchantKBUpdater:
             for keyword_value, normalized_keyword in keywords_to_add:
                 dedup_key = (normalized_name, normalized_keyword)
                 if dedup_key in existing_keys:
-                    result.skipped_duplicates += 1
                     continue
                 existing_keys.add(dedup_key)
-                if not is_new_merchant:
-                    result.existing_merchant_keywords_added += 1
                 values = {
                     "merchant_name": merchant_name,
                     "keyword": keyword_value,
@@ -582,7 +537,7 @@ class MerchantKBUpdater:
                 rows_to_append.append(values)
 
         if not rows_to_append:
-            return result
+            return
 
         self.path.parent.mkdir(parents=True, exist_ok=True)
         file_exists = self.path.exists()
@@ -591,8 +546,6 @@ class MerchantKBUpdater:
             if not file_exists or self.path.stat().st_size == 0:
                 writer.writeheader()
             writer.writerows(rows_to_append)
-        result.appended = len(rows_to_append)
-        return result
 
 
 class KeywordRowIndex:
@@ -637,33 +590,32 @@ class KeywordRowIndex:
 def load_merchant_kb(path: Path) -> list[KnowledgeBaseEntry]:
     if not path.exists():
         return []
-    with path.open("r", encoding="utf-8-sig", newline="") as handle:
-        reader = csv.DictReader(handle)
-        entries: list[KnowledgeBaseEntry] = []
-        seen: set[tuple[str, str]] = set()
-        for row in reader:
-            merchant_name = normalize_space(row.get("merchant_name", ""))
-            keyword = normalize_space(row.get("keyword", ""))
-            link = safe_url(row.get("link", ""))
-            normalized_keyword = normalize_search_text(keyword)
-            if not merchant_name or not keyword or not normalized_keyword:
-                continue
-            tokens = normalized_keyword.split()
-            if not tokens:
-                continue
-            dedup_key = (merchant_name.casefold(), normalized_keyword)
-            if dedup_key in seen:
-                continue
-            seen.add(dedup_key)
-            entries.append(
-                KnowledgeBaseEntry(
-                    merchant_name=merchant_name,
-                    keyword=keyword,
-                    link=link,
-                    normalized_keyword=normalized_keyword,
-                    first_token=tokens[0],
-                )
+    reader = open_csv_dict_reader(path)
+    entries: list[KnowledgeBaseEntry] = []
+    seen: set[tuple[str, str]] = set()
+    for row in reader:
+        merchant_name = normalize_space(row.get("merchant_name", ""))
+        keyword = normalize_space(row.get("keyword", ""))
+        link = safe_url(row.get("link", ""))
+        normalized_keyword = normalize_search_text(keyword)
+        if not merchant_name or not keyword or not normalized_keyword:
+            continue
+        tokens = normalized_keyword.split()
+        if not tokens:
+            continue
+        dedup_key = (merchant_name.casefold(), normalized_keyword)
+        if dedup_key in seen:
+            continue
+        seen.add(dedup_key)
+        entries.append(
+            KnowledgeBaseEntry(
+                merchant_name=merchant_name,
+                keyword=keyword,
+                link=link,
+                normalized_keyword=normalized_keyword,
+                first_token=tokens[0],
             )
+        )
     entries.sort(
         key=lambda entry: (
             len(entry.normalized_keyword.split()),
@@ -679,17 +631,29 @@ def china_timestamp_now() -> str:
     return datetime.now(CHINA_TIMEZONE).replace(microsecond=0).isoformat()
 
 
+def open_csv_dict_reader(path: Path) -> csv.DictReader:
+    raw_bytes = path.read_bytes()
+    try:
+        text = raw_bytes.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        text = raw_bytes.decode("utf-8-sig", errors="replace")
+        print(
+            f"Warning: invalid UTF-8 bytes in {path} at byte {exc.start}; replaced undecodable characters.",
+            flush=True,
+        )
+    return csv.DictReader(io.StringIO(text, newline=""))
+
+
 def load_rows(path: Path, row_limit: int | None = None) -> tuple[list[dict[str, str]], list[str]]:
-    with path.open("r", encoding="utf-8-sig", newline="") as handle:
-        reader = csv.DictReader(handle)
-        if reader.fieldnames is None:
-            raise ValueError(f"CSV file has no header: {path}")
-        rows: list[dict[str, str]] = []
-        for idx, row in enumerate(reader):
-            if row_limit is not None and idx >= row_limit:
-                break
-            rows.append({key: value or "" for key, value in row.items()})
-        return rows, list(reader.fieldnames)
+    reader = open_csv_dict_reader(path)
+    if reader.fieldnames is None:
+        raise ValueError(f"CSV file has no header: {path}")
+    rows: list[dict[str, str]] = []
+    for idx, row in enumerate(reader):
+        if row_limit is not None and idx >= row_limit:
+            break
+        rows.append({key: value or "" for key, value in row.items()})
+    return rows, list(reader.fieldnames)
 
 
 def write_rows(path: Path, rows: list[dict[str, str]], fieldnames: list[str]) -> None:
@@ -724,12 +688,7 @@ def should_apply_keyword(keyword: str) -> bool:
     return bool(normalize_search_text(keyword))
 
 
-def merchant_name_key(merchant_name: str) -> str:
-    return normalize_search_text(merchant_name)
-
-
 def process_file(args: argparse.Namespace) -> None:
-    started_at = time.time()
     rows, input_fieldnames = load_rows(args.input, args.row_limit)
     if "text" not in input_fieldnames:
         raise ValueError("Input CSV must contain a text column.")
@@ -791,14 +750,6 @@ def process_file(args: argparse.Namespace) -> None:
         "rows_total": len(rows),
         "rows_processed": 0,
         "api_calls": 0,
-        "keyword_batches": 0,
-        "cached_hits": 0,
-        "kb_hits": 0,
-        "kb_ai_appended": 0,
-        "kb_existing_merchant_keywords_added": 0,
-        "kb_new_merchants_added": 0,
-        "kb_ai_duplicates": 0,
-        "kb_ai_invalid": 0,
     }
     identified_merchant_names: set[str] = set()
     pending_ai_kb_candidates: list[MerchantKBCandidate] = []
@@ -811,6 +762,34 @@ def process_file(args: argparse.Namespace) -> None:
         print(
             f"Progress stage={stage} rows={stats['rows_processed']}/{stats['rows_total']} "
             f"waiting={rows_waiting()} merchants={len(identified_merchant_names)}",
+            flush=True,
+        )
+
+    def print_candidate(candidate_index: int, candidate_total: int, raw_value: str, frequency: int) -> None:
+        print(
+            f"Candidate {candidate_index}/{candidate_total} frequency={frequency} "
+            f"text={shorten_text(raw_value)!r}",
+            flush=True,
+        )
+
+    def print_api_result(
+        raw_value: str,
+        decision: MerchantDecision,
+        matched: int,
+        keyword_matched: int,
+        direct_matched: int,
+    ) -> None:
+        if decision.is_real_merchant:
+            print(
+                f"API merchant={decision.standardized!r} keyword={decision.keyword!r} "
+                f"matched={matched} keyword_batch={keyword_matched} exact_batch={direct_matched} "
+                f"text={shorten_text(raw_value)!r}",
+                flush=True,
+            )
+            return
+        print(
+            f"API unresolved matched={matched} reason={shorten_text(decision.reason, 120)!r} "
+            f"text={shorten_text(raw_value)!r}",
             flush=True,
         )
 
@@ -839,12 +818,14 @@ def process_file(args: argparse.Namespace) -> None:
         direct_match_source: MatchSource,
         keyword_match_source: MatchSource,
         matched_from_text: str,
-    ) -> int:
+    ) -> tuple[int, int, int]:
         matched = 0
+        keyword_matched = 0
+        direct_matched = 0
         exact_indices = exact_groups.get(canonical_value, [])
         exact_index_set = set(exact_indices)
         if decision.is_real_merchant and should_apply_keyword(decision.keyword):
-            identified_merchant_names.add(merchant_name_key(decision.standardized))
+            identified_merchant_names.add(normalize_search_text(decision.standardized))
             keyword_search = normalize_search_text(decision.keyword)
             for idx in row_search_index.find_containing(keyword_search, processed, exact_index_set):
                 processed[idx] = True
@@ -852,6 +833,7 @@ def process_file(args: argparse.Namespace) -> None:
                 apply_decision_to_row(rows[idx], decision)
                 set_trace_fields(rows[idx], keyword_match_source, matched_from_text)
                 matched += 1
+                keyword_matched += 1
             for idx in exact_indices:
                 if not processed[idx]:
                     processed[idx] = True
@@ -859,13 +841,13 @@ def process_file(args: argparse.Namespace) -> None:
                     apply_decision_to_row(rows[idx], decision)
                     set_trace_fields(rows[idx], direct_match_source, matched_from_text)
                     matched += 1
-            if matched:
-                stats["keyword_batches"] += 1
+                    direct_matched += 1
         else:
             for idx in exact_indices:
                 mark_processed(idx, None, match_source=MatchSource.UNRESOLVED)
                 matched += 1
-        return matched
+                direct_matched += 1
+        return matched, keyword_matched, direct_matched
 
     def write_checkpoint(force: bool = False) -> None:
         nonlocal checkpoint_written_at_call
@@ -874,21 +856,18 @@ def process_file(args: argparse.Namespace) -> None:
         write_rows(checkpoint_path, rows, fieldnames)
         checkpoint_written_at_call = stats["api_calls"]
 
-    def flush_pending_merchant_kb(reason: str) -> None:
-        if not args.update_merchant_kb or not pending_ai_kb_candidates:
+    merchant_kb_update_enabled = not args.skip_merchant_kb_update
+
+    def flush_pending_merchant_kb() -> None:
+        if not merchant_kb_update_enabled or not pending_ai_kb_candidates:
             return
-        kb_update = MerchantKBUpdater(args.merchant_kb).append_ai_results(pending_ai_kb_candidates)
-        stats["kb_ai_appended"] += kb_update.appended
-        stats["kb_existing_merchant_keywords_added"] += kb_update.existing_merchant_keywords_added
-        stats["kb_new_merchants_added"] += kb_update.new_merchants_added
-        stats["kb_ai_duplicates"] += kb_update.skipped_duplicates
-        stats["kb_ai_invalid"] += kb_update.skipped_invalid
+        MerchantKBUpdater(args.merchant_kb).append_ai_results(pending_ai_kb_candidates)
         pending_ai_kb_candidates.clear()
 
     def flush_checkpoint_on_exit() -> None:
         if stats["api_calls"] <= 0:
             return
-        flush_pending_merchant_kb("exit")
+        flush_pending_merchant_kb()
         if stats["api_calls"] == checkpoint_written_at_call:
             return
         cache_store.save()
@@ -938,17 +917,16 @@ def process_file(args: argparse.Namespace) -> None:
                 reason="matched_merchant_kb",
             )
             canonical_value = normalize_space(row.get("text", "")).casefold()
-            matched = apply_decision(
+            apply_decision(
                 canonical_value,
                 decision,
                 direct_match_source=MatchSource.KNOWLEDGE_BASE_DIRECT,
                 keyword_match_source=MatchSource.KNOWLEDGE_BASE_KEYWORD,
                 matched_from_text=row.get("text", ""),
             )
-            if matched:
-                stats["kb_hits"] += 1
         print_progress("knowledge_base")
 
+    cache_hit_found = False
     for canonical_value in list(cache_store.records):
         decision = cache_store.get(canonical_value)
         if decision is None:
@@ -956,7 +934,7 @@ def process_file(args: argparse.Namespace) -> None:
         if canonical_value not in exact_groups:
             continue
         source_text = rows[exact_groups[canonical_value][0]].get("text", "")
-        matched = apply_decision(
+        matched, _, _ = apply_decision(
             canonical_value,
             decision,
             direct_match_source=MatchSource.CACHE_DIRECT,
@@ -964,11 +942,11 @@ def process_file(args: argparse.Namespace) -> None:
             matched_from_text=source_text,
         )
         if matched:
-            stats["cached_hits"] += 1
-    if stats["cached_hits"]:
+            cache_hit_found = True
+    if cache_hit_found:
         print_progress("cache")
 
-    candidates: list[tuple[tuple[int, int, int, int, int], str, str]] = []
+    candidates: list[tuple[tuple[int, int, int, int, int], str, str, int]] = []
     for canonical_value, indices in exact_groups.items():
         if not canonical_value:
             for idx in indices:
@@ -985,6 +963,7 @@ def process_file(args: argparse.Namespace) -> None:
                 build_candidate_score(raw_value, len(indices), repeated_prefix_support),
                 canonical_value,
                 raw_value,
+                len(indices),
             )
         )
     candidates.sort(reverse=True)
@@ -997,15 +976,16 @@ def process_file(args: argparse.Namespace) -> None:
         timeout_seconds=args.timeout_seconds,
         max_retries=args.max_retries,
         retry_delay_seconds=args.retry_delay_seconds,
-        extra_body=args.extra_body_json,
     )
 
-    for candidate_index, (_, canonical_value, raw_value) in enumerate(candidates, start=1):
+    candidate_total = len(candidates)
+    for candidate_index, (_, canonical_value, raw_value, frequency) in enumerate(candidates, start=1):
         if all(processed[idx] for idx in exact_groups[canonical_value]):
             continue
         if args.max_api_calls is not None and stats["api_calls"] >= args.max_api_calls:
             break
 
+        print_candidate(candidate_index, candidate_total, raw_value, frequency)
         decision = client.verify_merchant(
             raw_value,
             prefix_hint=best_prefix_by_canonical.get(canonical_value, ""),
@@ -1013,13 +993,14 @@ def process_file(args: argparse.Namespace) -> None:
         stats["api_calls"] += 1
         if decision.should_cache():
             cache_store.set(canonical_value, decision)
-        matched = apply_decision(
+        matched, keyword_matched, direct_matched = apply_decision(
             canonical_value,
             decision,
             direct_match_source=MatchSource.AI_DIRECT,
             keyword_match_source=MatchSource.AI_KEYWORD,
             matched_from_text=raw_value,
         )
+        print_api_result(raw_value, decision, matched, keyword_matched, direct_matched)
         if decision.is_real_merchant and matched:
             pending_ai_kb_candidates.append(
                 MerchantKBCandidate(
@@ -1035,7 +1016,7 @@ def process_file(args: argparse.Namespace) -> None:
             write_checkpoint()
 
         if args.merchant_kb_save_every and stats["api_calls"] % args.merchant_kb_save_every == 0:
-            flush_pending_merchant_kb("periodic")
+            flush_pending_merchant_kb()
 
         if args.progress_every and stats["api_calls"] % args.progress_every == 0:
             print_progress("api")
@@ -1045,19 +1026,10 @@ def process_file(args: argparse.Namespace) -> None:
             mark_processed(idx, None, match_source=MatchSource.UNRESOLVED)
 
     cache_store.save()
-    flush_pending_merchant_kb("final")
+    flush_pending_merchant_kb()
     write_rows(args.output, rows, fieldnames)
     atexit.unregister(flush_checkpoint_on_exit)
     print_progress("finished")
-
-
-def parse_extra_body(raw_json: str | None) -> dict[str, Any]:
-    if not raw_json:
-        return {}
-    payload = json.loads(raw_json)
-    if not isinstance(payload, dict):
-        raise ValueError("--extra-body-json must be a JSON object.")
-    return payload
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -1069,15 +1041,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cache", type=Path, default=DEFAULT_CACHE)
     parser.add_argument("--merchant-kb", type=Path, default=DEFAULT_MERCHANT_KB)
     parser.add_argument(
-        "--update-merchant-kb",
+        "--skip-merchant-kb-update",
         action="store_true",
-        default=True,
-        help="Append successful ai_direct merchant results into merchant_kb.csv. Enabled by default.",
-    )
-    parser.add_argument(
-        "--no-update-merchant-kb",
-        action="store_false",
-        dest="update_merchant_kb",
         help="Disable merchant_kb.csv updates for this run.",
     )
     parser.add_argument(
@@ -1107,12 +1072,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--max-api-calls", type=int, default=None)
     parser.add_argument("--row-limit", type=int, default=None)
-    parser.add_argument(
-        "--extra-body-json",
-        type=parse_extra_body,
-        default=parse_extra_body(os.environ.get("DEEPSEEK_EXTRA_BODY_JSON")),
-        help="Provider-specific JSON object merged into the DeepSeek request body.",
-    )
     return parser
 
 
