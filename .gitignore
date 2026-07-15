@@ -2,3 +2,9 @@ __pycache__/
 *.pyc
 *.checkpoint.csv
 output/*.checkpoint.csv
+*.csv
+*.json
+*.csv
+*.json
+*.csv
+*.json
