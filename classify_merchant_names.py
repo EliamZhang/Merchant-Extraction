@@ -210,6 +210,7 @@ class DeepSeekClassifier:
             "temperature": 0,
             "response_format": {"type": "json_object"},
             "enable_search": True,
+            "search_enabled": True,
         }
         response_json = self._post_json("/chat/completions", body)
         return str(response_json["choices"][0]["message"]["content"])
