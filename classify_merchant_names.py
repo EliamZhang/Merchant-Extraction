@@ -201,7 +201,7 @@ class DeepSeekClassifier:
         return [result_by_id.get(str(i), "") for i in range(len(names))]
 
     def _chat_completion(self, prompt: str) -> str:
-        body = {
+        body: dict[str, Any] = {
             "model": self.model,
             "messages": [
                 {"role": "system", "content": "Return strict JSON and nothing else."},
@@ -209,6 +209,7 @@ class DeepSeekClassifier:
             ],
             "temperature": 0,
             "response_format": {"type": "json_object"},
+            "enable_search": True,
         }
         response_json = self._post_json("/chat/completions", body)
         return str(response_json["choices"][0]["message"]["content"])

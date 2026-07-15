@@ -367,6 +367,7 @@ class DeepSeekClient:
             ],
             "temperature": 0,
             "response_format": {"type": "json_object"},
+            "enable_search": True,
         }
 
         last_error: Exception | None = None

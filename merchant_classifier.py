@@ -305,7 +305,7 @@ class DeepSeekMerchantClassifier:
         ]
 
     def _chat_completion(self, prompt: str) -> str:
-        body = {
+        body: dict[str, Any] = {
             "model": self.model,
             "messages": [
                 {
@@ -319,6 +319,7 @@ class DeepSeekMerchantClassifier:
             ],
             "temperature": 0,
             "response_format": {"type": "json_object"},
+            "enable_search": True,
         }
         if self.thinking_type and self.thinking_type.casefold() != "none":
             body["thinking"] = {"type": self.thinking_type}
