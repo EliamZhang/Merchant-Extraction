@@ -435,7 +435,7 @@ def classify_merchant_kb(
     api_key: str = "",
     base_url: str = DEFAULT_BASE_URL,
     model: str = DEFAULT_MODEL,
-    batch_size: int = 20,
+    batch_size: int = 50,
     timeout_seconds: int = 90,
     max_retries: int = 3,
     retry_delay_seconds: float = 2.0,
@@ -679,7 +679,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL)
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--api-key", default=os.environ.get("DEEPSEEK_API_KEY", ""))
-    parser.add_argument("--batch-size", type=int, default=20)
+    parser.add_argument("--batch-size", type=int, default=50)
     parser.add_argument("--timeout-seconds", type=int, default=90)
     parser.add_argument("--max-retries", type=int, default=3)
     parser.add_argument("--retry-delay-seconds", type=float, default=2.0)
