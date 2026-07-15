@@ -23,11 +23,14 @@ DEFAULT_REASONING_EFFORT = os.environ.get("DEEPSEEK_REASONING_EFFORT", "medium")
 CHINA_TIMEZONE = timezone(timedelta(hours=8))
 MERCHANT_CATEGORIES = (
     "Automotive",
+    "Debt Collection",
+    "Debt Consolidation",
     "Department Stores",
     "Dining Out",
     "Donations",
     "Education",
     "Entertainment",
+    "Financial Services",
     "Gambling",
     "Groceries",
     "Gyms and other memberships",
@@ -37,6 +40,8 @@ MERCHANT_CATEGORIES = (
     "Insurance",
     "Personal Care",
     "Pet Care",
+    "Professional Services",
+    "Property and Strata",
     "Rent",
     "Retail",
     "Subscription TV",
@@ -320,6 +325,7 @@ class DeepSeekMerchantClassifier:
             "temperature": 0,
             "response_format": {"type": "json_object"},
             "enable_search": True,
+            "search_enabled": True,
         }
         if self.thinking_type and self.thinking_type.casefold() != "none":
             body["thinking"] = {"type": self.thinking_type}
