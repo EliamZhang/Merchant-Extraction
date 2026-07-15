@@ -1,17 +1,23 @@
 import argparse
 import atexit
 import csv
-import io
 import json
 import os
-import re
 import sys
 import time
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-from urllib import error, request
+
+from utils import (
+    china_timestamp_now,
+    clean_output_value,
+    extract_json_object,
+    normalize_space,
+    open_csv_dict_reader,
+    post_json,
+    safe_url,
+)
 
 
 DEFAULT_MERCHANT_KB = Path("merchant_kb.csv")
@@ -20,7 +26,6 @@ DEFAULT_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-pro")
 DEFAULT_THINKING_TYPE = os.environ.get("DEEPSEEK_THINKING_TYPE", "enabled")
 DEFAULT_REASONING_EFFORT = os.environ.get("DEEPSEEK_REASONING_EFFORT", "medium")
-CHINA_TIMEZONE = timezone(timedelta(hours=8))
 MERCHANT_CATEGORIES = (
     "Automotive",
     "Debt Collection",
@@ -61,26 +66,9 @@ KB_FIELDNAMES = [
 ]
 
 
-def normalize_space(value: str) -> str:
-    return re.sub(r"\s+", " ", value or "").strip()
-
-
-def clean_output_value(value: str) -> str:
-    return normalize_space(value).strip('"').strip("'")
-
-
 def clean_category(value: str) -> str:
     raw_category = clean_output_value(value)
     return MERCHANT_CATEGORY_BY_CASEFOLD.get(raw_category.casefold(), "")
-
-
-def safe_url(value: str) -> str:
-    url = normalize_space(value)
-    if not url:
-        return ""
-    if re.match(r"^https?://", url, flags=re.IGNORECASE):
-        return url
-    return ""
 
 
 def build_classification_cache_key(merchant_name: str, keywords: str, link: str) -> str:
@@ -91,11 +79,6 @@ def build_classification_cache_key(merchant_name: str, keywords: str, link: str)
             safe_url(link).casefold(),
         )
     )
-
-
-def open_csv_dict_reader(path: Path) -> csv.DictReader:
-    text = path.read_text(encoding="utf-8-sig", errors="replace")
-    return csv.DictReader(io.StringIO(text, newline=""))
 
 
 def validate_kb_fieldnames(path: Path, reader: csv.DictReader) -> None:
@@ -149,30 +132,6 @@ def write_merchant_kb_rows(path: Path, rows: list[dict[str, str]]) -> Path:
         except OSError:
             pass
         raise
-
-
-def china_timestamp_now() -> str:
-    return datetime.now(CHINA_TIMEZONE).replace(microsecond=0).isoformat()
-
-
-def extract_json_object(text: str) -> dict[str, Any]:
-    text = text.strip()
-    if not text:
-        raise ValueError("Empty model response.")
-    try:
-        parsed = json.loads(text)
-        if isinstance(parsed, dict):
-            return parsed
-    except json.JSONDecodeError:
-        pass
-
-    match = re.search(r"\{.*\}", text, flags=re.DOTALL)
-    if not match:
-        raise ValueError(f"Model response does not contain JSON: {text[:200]}")
-    parsed = json.loads(match.group(0))
-    if not isinstance(parsed, dict):
-        raise ValueError("Model JSON response is not an object.")
-    return parsed
 
 
 @dataclass
@@ -331,25 +290,8 @@ class DeepSeekMerchantClassifier:
             body["thinking"] = {"type": self.thinking_type}
         if self.reasoning_effort and self.reasoning_effort.casefold() != "none":
             body["reasoning_effort"] = self.reasoning_effort
-        response_json = self._post_json("/chat/completions", body)
+        response_json = post_json(self.api_key, self.base_url, "/chat/completions", body, self.timeout_seconds)
         return str(response_json["choices"][0]["message"]["content"])
-
-    def _post_json(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
-        url = f"{self.base_url}{path}"
-        data = json.dumps(payload).encode("utf-8")
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
-        req = request.Request(url, data=data, headers=headers, method="POST")
-        try:
-            with request.urlopen(req, timeout=self.timeout_seconds) as response:
-                return json.loads(response.read().decode("utf-8"))
-        except error.HTTPError as exc:
-            body = exc.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"HTTP {exc.code}: {body[:500]}") from exc
-        except error.URLError as exc:
-            raise RuntimeError(f"Network error: {exc.reason}") from exc
 
 
 class CacheStore:
