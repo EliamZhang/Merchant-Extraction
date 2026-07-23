@@ -270,12 +270,67 @@ class MerchantPromptConfig:
             f"text: {json.dumps(text_value, ensure_ascii=False)}"
         )
 
+    def build_batch_user_prompt(self, items: list[dict[str, str]]) -> str:
+        payload = [
+            {
+                "id": item["id"],
+                "text": item.get("text", ""),
+                "prefix_hint": item.get("prefix_hint", ""),
+            }
+            for item in items
+        ]
+        return (
+            "You are verifying whether bank-transaction counterparty strings refer to real merchants.\n"
+            "Use only the provided text field. Do not rely on any other fields.\n"
+            "These strings can contain noise such as bank-channel labels, person names, payroll text, refund codes, dates, or reference IDs.\n"
+            "If a plausible merchant entity can be isolated from the text field alone, verify that merchant and return its standardized name.\n"
+            "If your API/provider supports web search, use it to confirm the merchant exists online.\n"
+            "If you cannot confidently confirm it is a real merchant, respond with is_real_merchant=false and leave fields blank.\n"
+            "Return JSON only as an object with key results. results must be an array with one result per input id.\n"
+            "Each result must have keys: id, is_real_merchant, standardized, keyword, link, reason.\n"
+            "Rules:\n"
+            "- standardized: official or commonly accepted merchant name, without bank noise.\n"
+            "- keyword: copy the shortest distinctive merchant phrase directly from the provided text field. Do not rewrite, normalize, translate, or invent it.\n"
+            "- keyword must come from the text field itself, but standardized can be normalized.\n"
+            "- keyword should keep only the merchant-identifying span needed for matching similar rows.\n"
+            "- Exclude trailing or leading location text, suburb/state/country abbreviations, store numbers, terminal IDs, card numbers, dates, times, and reference IDs unless they are clearly part of the official merchant name.\n"
+            "- link: best verification URL, prefer official website, otherwise Google Maps or another reliable directory.\n"
+            "- If the value is empty, personal, invalid, generic, or not a merchant, set false and keep all fields blank.\n"
+            "- If a prefix_hint is provided, use it only as a hint when it is clearly part of the same merchant name.\n"
+            f"items: {json.dumps(payload, ensure_ascii=False)}"
+        )
+
 
 class MerchantResponseValidator:
     def parse(self, text_value: str, message: str) -> MerchantDecision:
         payload_json = extract_json_object(message)
         decision = MerchantDecision.from_model_payload(payload_json)
         return self.finalize(text_value, decision)
+
+    def parse_batch(self, items: list[dict[str, str]], message: str) -> dict[str, MerchantDecision]:
+        payload_json = extract_json_object(message)
+        raw_results = payload_json.get("results")
+        if not isinstance(raw_results, list):
+            raise ValueError("Batch model response must contain a results array.")
+
+        result_by_id: dict[str, dict[str, Any]] = {}
+        for raw_result in raw_results:
+            if not isinstance(raw_result, dict):
+                continue
+            item_id = str(raw_result.get("id", ""))
+            if item_id:
+                result_by_id[item_id] = raw_result
+
+        decisions: dict[str, MerchantDecision] = {}
+        for item in items:
+            text_value = item.get("text", "")
+            payload = result_by_id.get(item["id"])
+            if payload is None:
+                decisions[item["id"]] = MerchantDecision.empty(reason="missing_batch_result")
+                continue
+            decision = MerchantDecision.from_model_payload(payload)
+            decisions[item["id"]] = self.finalize(text_value, decision)
+        return decisions
 
     def finalize(self, text_value: str, decision: MerchantDecision) -> MerchantDecision:
         if not decision.is_real_merchant:
@@ -327,8 +382,18 @@ class DeepSeekClient:
         prefix_hint: str = "",
     ) -> MerchantDecision:
         prompt = self.prompt_config.build_user_prompt(text_value, prefix_hint)
+        message = self._chat_completion(prompt)
+        return self.response_validator.parse(text_value, message)
 
-        body = {
+    def verify_merchant_batch(self, items: list[dict[str, str]]) -> dict[str, MerchantDecision]:
+        if not items:
+            return {}
+        prompt = self.prompt_config.build_batch_user_prompt(items)
+        message = self._chat_completion(prompt)
+        return self.response_validator.parse_batch(items, message)
+
+    def _chat_completion(self, prompt: str) -> str:
+        body: dict[str, Any] = {
             "model": self.model,
             "messages": [
                 {
@@ -354,15 +419,14 @@ class DeepSeekClient:
         for attempt in range(1, self.max_retries + 1):
             try:
                 response_json = post_json(self.api_key, self.base_url, "/chat/completions", body, self.timeout_seconds)
-                message = response_json["choices"][0]["message"]["content"]
-                return self.response_validator.parse(text_value, message)
+                return str(response_json["choices"][0]["message"]["content"])
             except Exception as exc:  # noqa: BLE001
                 last_error = exc
             if attempt >= self.max_retries:
                 break
             time.sleep(self.retry_delay_seconds * attempt)
 
-        return MerchantDecision.empty(reason=f"verification_failed: {last_error}")
+        raise RuntimeError(f"Chat completion failed after {self.max_retries} retries: {last_error}")
 
 
 class CacheStore:
@@ -928,36 +992,55 @@ def process_file(args: argparse.Namespace) -> None:
     )
 
     candidate_total = len(candidates)
-    for candidate_index, (_, canonical_value, raw_value, frequency) in enumerate(candidates, start=1):
-        if all(processed[idx] for idx in exact_groups[canonical_value]):
-            continue
-        if args.max_api_calls is not None and stats["api_calls"] >= args.max_api_calls:
-            break
+    batch_size = args.batch_size if args.batch_size > 0 else 1
+    candidate_index = 0
+    while candidate_index < len(candidates):
+        batch_items: list[dict[str, str]] = []
+        batch_candidates: list[tuple[str, str, int]] = []
+        for i in range(candidate_index, min(candidate_index + batch_size, len(candidates))):
+            _, canonical_value, raw_value, frequency = candidates[i]
+            if all(processed[idx] for idx in exact_groups[canonical_value]):
+                continue
+            if args.max_api_calls is not None and stats["api_calls"] >= args.max_api_calls:
+                break
+            print_candidate(i + 1, candidate_total, raw_value, frequency)
+            batch_items.append({
+                "id": canonical_value,
+                "text": raw_value,
+                "prefix_hint": best_prefix_by_canonical.get(canonical_value, ""),
+            })
+            batch_candidates.append((canonical_value, raw_value, frequency))
 
-        print_candidate(candidate_index, candidate_total, raw_value, frequency)
-        decision = client.verify_merchant(
-            raw_value,
-            prefix_hint=best_prefix_by_canonical.get(canonical_value, ""),
-        )
+        if not batch_items:
+            candidate_index += batch_size
+            continue
+
         stats["api_calls"] += 1
-        if decision.should_cache():
-            cache_store.set(canonical_value, decision)
-        matched, keyword_matched, direct_matched = apply_decision(
-            canonical_value,
-            decision,
-            direct_match_source=MatchSource.AI_DIRECT,
-            keyword_match_source=MatchSource.AI_KEYWORD,
-            matched_from_text=raw_value,
-        )
-        print_api_result(raw_value, decision, matched, keyword_matched, direct_matched)
-        if decision.is_real_merchant and matched:
-            pending_ai_kb_candidates.append(
-                MerchantKBCandidate(
-                    merchant_name=decision.standardized,
-                    keyword=decision.keyword,
-                    link=decision.link,
-                )
+        decisions = client.verify_merchant_batch(batch_items)
+
+        for canonical_value, raw_value, frequency in batch_candidates:
+            decision = decisions.get(canonical_value)
+            if decision is None:
+                decision = MerchantDecision.empty(reason="missing_batch_result")
+
+            if decision.should_cache():
+                cache_store.set(canonical_value, decision)
+            matched, keyword_matched, direct_matched = apply_decision(
+                canonical_value,
+                decision,
+                direct_match_source=MatchSource.AI_DIRECT,
+                keyword_match_source=MatchSource.AI_KEYWORD,
+                matched_from_text=raw_value,
             )
+            print_api_result(raw_value, decision, matched, keyword_matched, direct_matched)
+            if decision.is_real_merchant and matched:
+                pending_ai_kb_candidates.append(
+                    MerchantKBCandidate(
+                        merchant_name=decision.standardized,
+                        keyword=decision.keyword,
+                        link=decision.link,
+                    )
+                )
 
         cache_store.save()
 
@@ -969,6 +1052,8 @@ def process_file(args: argparse.Namespace) -> None:
 
         if args.progress_every and stats["api_calls"] % args.progress_every == 0:
             print_progress("api")
+
+        candidate_index += batch_size
 
     for idx, done in enumerate(processed):
         if not done:
@@ -1030,6 +1115,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Partial CSV path used while the run is still in progress.",
     )
     parser.add_argument("--max-api-calls", type=int, default=None)
+    parser.add_argument("--batch-size", type=int, default=10, help="Number of candidates per API call. Default 10.")
     parser.add_argument("--row-limit", type=int, default=None)
     return parser
 
