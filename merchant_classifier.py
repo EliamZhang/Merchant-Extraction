@@ -260,21 +260,14 @@ class DeepSeekMerchantClassifier:
             return []
 
         prompt = self.prompt_config.build_batch_user_prompt(items)
-        last_error: Exception | None = None
-        for attempt in range(1, self.max_retries + 1):
-            try:
-                message = self._chat_completion(prompt)
-                return self.response_validator.parse_batch(items, message)
-            except Exception as exc:  # noqa: BLE001
-                last_error = exc
-            if attempt >= self.max_retries:
-                break
-            time.sleep(self.retry_delay_seconds * attempt)
-
-        return [
-            MerchantClassification.empty(item.get("merchant_name", ""), f"classification_failed: {last_error}")
-            for item in items
-        ]
+        try:
+            message = self._chat_completion(prompt)
+            return self.response_validator.parse_batch(items, message)
+        except Exception as exc:
+            return [
+                MerchantClassification.empty(item.get("merchant_name", ""), f"classification_failed: {exc}")
+                for item in items
+            ]
 
     def _chat_completion(self, prompt: str) -> str:
         body: dict[str, Any] = {
@@ -298,8 +291,19 @@ class DeepSeekMerchantClassifier:
             body["thinking"] = {"type": self.thinking_type}
         if self.reasoning_effort and self.reasoning_effort.casefold() != "none":
             body["reasoning_effort"] = self.reasoning_effort
-        response_json = post_json(self.api_key, self.base_url, "/chat/completions", body, self.timeout_seconds)
-        return str(response_json["choices"][0]["message"]["content"])
+
+        last_error: Exception | None = None
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                response_json = post_json(self.api_key, self.base_url, "/chat/completions", body, self.timeout_seconds)
+                return str(response_json["choices"][0]["message"]["content"])
+            except Exception as exc:  # noqa: BLE001
+                last_error = exc
+            if attempt >= self.max_retries:
+                break
+            time.sleep(self.retry_delay_seconds * attempt)
+
+        raise RuntimeError(f"Chat completion failed after {self.max_retries} retries: {last_error}")
 
 
 class CacheStore:
