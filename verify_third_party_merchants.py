@@ -33,7 +33,7 @@ DEFAULT_CACHE = Path("cache/sample_verification_cache.json")
 DEFAULT_MERCHANT_KB = Path("merchant_kb.csv")
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-pro")
 DEFAULT_THINKING_TYPE = os.environ.get("DEEPSEEK_THINKING_TYPE", "enabled")
-DEFAULT_REASONING_EFFORT = os.environ.get("DEEPSEEK_REASONING_EFFORT", "medium")
+DEFAULT_REASONING_EFFORT = os.environ.get("DEEPSEEK_REASONING_EFFORT", "xhigh")
 EMPTY_FIELDS = ("standardized", "keyword", "link")
 TRACE_FIELDS = ("match_source", "matched_from_text")
 GENERIC_TRANSFER_PREFIXES = (
@@ -1158,7 +1158,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--reasoning-effort",
         default=DEFAULT_REASONING_EFFORT,
-        help='Reasoning effort sent to the model. Defaults to medium. Use "none" to omit.',
+        help='Reasoning effort sent to the model. Defaults to xhigh. Use "none" to omit.',
     )
     parser.add_argument("--progress-every", type=int, default=20)
     parser.add_argument(

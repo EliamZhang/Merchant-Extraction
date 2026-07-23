@@ -27,7 +27,7 @@ DEFAULT_CACHE = Path("cache/merchant_category_cache.json")
 DEFAULT_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-pro")
 DEFAULT_THINKING_TYPE = os.environ.get("DEEPSEEK_THINKING_TYPE", "enabled")
-DEFAULT_REASONING_EFFORT = os.environ.get("DEEPSEEK_REASONING_EFFORT", "medium")
+DEFAULT_REASONING_EFFORT = os.environ.get("DEEPSEEK_REASONING_EFFORT", "xhigh")
 MERCHANT_CATEGORIES = (
     "Automotive",
     "Debt Collection",
@@ -645,7 +645,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--reasoning-effort",
         default=DEFAULT_REASONING_EFFORT,
-        help='Reasoning effort sent to the model. Defaults to medium. Use "none" to omit.',
+        help='Reasoning effort sent to the model. Defaults to xhigh. Use "none" to omit.',
     )
     parser.add_argument("--row-limit", type=int, default=None)
     parser.add_argument(
