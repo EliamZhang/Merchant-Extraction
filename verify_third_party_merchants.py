@@ -485,10 +485,13 @@ class KnowledgeBaseEntry:
 
 KB_FIELDNAMES = [
     "merchant_name",
-    "keyword",
+    "keywords",
     "link",
-    "keyword_created_at",
+    "category",
+    "keyword_updated_at",
+    "category_updated_at",
 ]
+KEYWORD_SEPARATOR = " | "
 
 
 @dataclass
@@ -496,6 +499,39 @@ class MerchantKBCandidate:
     merchant_name: str
     keyword: str
     link: str
+
+
+def split_kb_keywords(value: str) -> list[str]:
+    keywords: list[str] = []
+    seen: set[str] = set()
+    for keyword in re.split(r"\s*\|\s*", normalize_space(value)):
+        cleaned = normalize_space(keyword)
+        normalized = normalize_search_text(cleaned)
+        if not cleaned or not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        keywords.append(cleaned)
+    return keywords
+
+
+def normalize_kb_row(row: dict[str, str]) -> dict[str, str]:
+    keyword_values = split_kb_keywords(row.get("keywords", ""))
+    legacy_keyword = normalize_space(row.get("keyword", ""))
+    if legacy_keyword:
+        keyword_values = split_kb_keywords(KEYWORD_SEPARATOR.join([*keyword_values, legacy_keyword]))
+
+    keyword_updated_at = normalize_space(row.get("keyword_updated_at", ""))
+    if not keyword_updated_at:
+        keyword_updated_at = normalize_space(row.get("keyword_created_at", ""))
+
+    return {
+        "merchant_name": normalize_space(row.get("merchant_name", "")),
+        "keywords": KEYWORD_SEPARATOR.join(keyword_values),
+        "link": safe_url(row.get("link", "")),
+        "category": clean_output_value(row.get("category", "")),
+        "keyword_updated_at": keyword_updated_at,
+        "category_updated_at": normalize_space(row.get("category_updated_at", "")),
+    }
 
 
 class MerchantKBUpdater:
@@ -506,25 +542,44 @@ class MerchantKBUpdater:
         if not candidates:
             return
 
-        existing_keys: set[tuple[str, str]] = set()
-        existing_names: set[str] = set()
-        display_name_by_normalized: dict[str, str] = {}
+        rows: list[dict[str, str]] = []
+        row_index_by_normalized_name: dict[str, int] = {}
+        keyword_norms_by_normalized_name: dict[str, set[str]] = {}
 
         if self.path.exists():
             with self.path.open("r", encoding="utf-8-sig", newline="") as handle:
                 reader = csv.DictReader(handle)
                 for row in reader:
-                    normalized_name = normalize_search_text(row.get("merchant_name", ""))
-                    normalized_keyword = normalize_search_text(row.get("keyword", ""))
-                    if normalized_name and normalized_keyword:
-                        existing_keys.add((normalized_name, normalized_keyword))
-                    merchant_name = normalize_space(row.get("merchant_name", ""))
-                    if merchant_name and normalized_name:
-                        existing_names.add(normalized_name)
-                        display_name_by_normalized.setdefault(normalized_name, merchant_name)
+                    normalized_row = normalize_kb_row({key: value or "" for key, value in row.items()})
+                    normalized_name = normalize_search_text(normalized_row["merchant_name"])
+                    if not normalized_name:
+                        continue
+                    keyword_norms = {
+                        normalize_search_text(keyword)
+                        for keyword in split_kb_keywords(normalized_row["keywords"])
+                    }
+                    if normalized_name in row_index_by_normalized_name:
+                        existing_row = rows[row_index_by_normalized_name[normalized_name]]
+                        merged_keywords = split_kb_keywords(
+                            KEYWORD_SEPARATOR.join([existing_row["keywords"], normalized_row["keywords"]])
+                        )
+                        existing_row["keywords"] = KEYWORD_SEPARATOR.join(merged_keywords)
+                        if not existing_row["link"] and normalized_row["link"]:
+                            existing_row["link"] = normalized_row["link"]
+                        if not existing_row["category"] and normalized_row["category"]:
+                            existing_row["category"] = normalized_row["category"]
+                        if not existing_row["keyword_updated_at"] and normalized_row["keyword_updated_at"]:
+                            existing_row["keyword_updated_at"] = normalized_row["keyword_updated_at"]
+                        if not existing_row["category_updated_at"] and normalized_row["category_updated_at"]:
+                            existing_row["category_updated_at"] = normalized_row["category_updated_at"]
+                        keyword_norms_by_normalized_name[normalized_name].update(keyword_norms)
+                        continue
+                    row_index_by_normalized_name[normalized_name] = len(rows)
+                    keyword_norms_by_normalized_name[normalized_name] = set(keyword_norms)
+                    rows.append(normalized_row)
 
         timestamp = china_timestamp_now()
-        rows_to_append: list[dict[str, str]] = []
+        changed = False
         for candidate in candidates:
             merchant_name = normalize_space(candidate.merchant_name)
             keyword = normalize_space(candidate.keyword)
@@ -545,35 +600,48 @@ class MerchantKBUpdater:
             if not keywords_to_add:
                 continue
 
-            is_new_merchant = normalized_name not in existing_names
-            if is_new_merchant:
-                existing_names.add(normalized_name)
-                display_name_by_normalized[normalized_name] = merchant_name
-            else:
-                merchant_name = display_name_by_normalized.get(normalized_name, merchant_name)
+            if normalized_name not in row_index_by_normalized_name:
+                row_index_by_normalized_name[normalized_name] = len(rows)
+                keyword_norms_by_normalized_name[normalized_name] = set()
+                rows.append(
+                    {
+                        "merchant_name": merchant_name,
+                        "keywords": "",
+                        "link": link,
+                        "category": "",
+                        "keyword_updated_at": "",
+                        "category_updated_at": "",
+                    }
+                )
+            row = rows[row_index_by_normalized_name[normalized_name]]
+            existing_keyword_norms = keyword_norms_by_normalized_name[normalized_name]
+            existing_keywords = split_kb_keywords(row["keywords"])
+            row_changed = False
             for keyword_value, normalized_keyword in keywords_to_add:
-                dedup_key = (normalized_name, normalized_keyword)
-                if dedup_key in existing_keys:
+                if normalized_keyword in existing_keyword_norms:
                     continue
-                existing_keys.add(dedup_key)
-                values = {
-                    "merchant_name": merchant_name,
-                    "keyword": keyword_value,
-                    "link": link,
-                    "keyword_created_at": timestamp,
-                }
-                rows_to_append.append(values)
+                existing_keyword_norms.add(normalized_keyword)
+                existing_keywords.append(keyword_value)
+                row_changed = True
+            if link and not row["link"]:
+                row["link"] = link
+                row_changed = True
+            if row_changed:
+                row["keywords"] = KEYWORD_SEPARATOR.join(existing_keywords)
+                row["keyword_updated_at"] = timestamp
+                changed = True
 
-        if not rows_to_append:
+        if not changed:
             return
 
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        file_exists = self.path.exists()
-        with self.path.open("a", encoding="utf-8", newline="") as handle:
+        target_path = self.path.resolve()
+        temp_path = target_path.with_name(f"{target_path.name}.{os.getpid()}.tmp")
+        with temp_path.open("w", encoding="utf-8-sig", newline="") as handle:
             writer = csv.DictWriter(handle, fieldnames=KB_FIELDNAMES)
-            if not file_exists or self.path.stat().st_size == 0:
-                writer.writeheader()
-            writer.writerows(rows_to_append)
+            writer.writeheader()
+            writer.writerows(normalize_kb_row(row) for row in rows)
+        temp_path.replace(target_path)
 
 
 class KeywordRowIndex:
@@ -622,28 +690,32 @@ def load_merchant_kb(path: Path) -> list[KnowledgeBaseEntry]:
     entries: list[KnowledgeBaseEntry] = []
     seen: set[tuple[str, str]] = set()
     for row in reader:
-        merchant_name = normalize_space(row.get("merchant_name", ""))
-        keyword = normalize_space(row.get("keyword", ""))
-        link = safe_url(row.get("link", ""))
-        normalized_keyword = normalize_search_text(keyword)
-        if not merchant_name or not keyword or not normalized_keyword:
+        normalized_row = normalize_kb_row({key: value or "" for key, value in row.items()})
+        merchant_name = normalized_row["merchant_name"]
+        link = normalized_row["link"]
+        keywords = split_kb_keywords(normalized_row["keywords"])
+        if not merchant_name or not keywords:
             continue
-        tokens = normalized_keyword.split()
-        if not tokens:
-            continue
-        dedup_key = (merchant_name.casefold(), normalized_keyword)
-        if dedup_key in seen:
-            continue
-        seen.add(dedup_key)
-        entries.append(
-            KnowledgeBaseEntry(
-                merchant_name=merchant_name,
-                keyword=keyword,
-                link=link,
-                normalized_keyword=normalized_keyword,
-                first_token=tokens[0],
+        for keyword in keywords:
+            normalized_keyword = normalize_search_text(keyword)
+            if not normalized_keyword:
+                continue
+            tokens = normalized_keyword.split()
+            if not tokens:
+                continue
+            dedup_key = (merchant_name.casefold(), normalized_keyword)
+            if dedup_key in seen:
+                continue
+            seen.add(dedup_key)
+            entries.append(
+                KnowledgeBaseEntry(
+                    merchant_name=merchant_name,
+                    keyword=keyword,
+                    link=link,
+                    normalized_keyword=normalized_keyword,
+                    first_token=tokens[0],
+                )
             )
-        )
     entries.sort(
         key=lambda entry: (
             len(entry.normalized_keyword.split()),
@@ -1082,8 +1154,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--merchant-kb-save-every",
         type=int,
-        default=20,
-        help="Append pending AI-verified merchant keywords to merchant_kb.csv every N API calls. Use 0 to write only at the end.",
+        default=0,
+        help="Merge pending AI-verified merchant keywords into merchant_kb.csv every N API calls. Use 0 to write only at the end.",
     )
     parser.add_argument("--base-url", default=os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"))
     parser.add_argument("--model", default=os.environ.get("DEEPSEEK_MODEL", "deepseek-chat"))

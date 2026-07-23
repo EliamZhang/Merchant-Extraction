@@ -85,6 +85,11 @@ def validate_kb_fieldnames(path: Path, reader: csv.DictReader) -> None:
     fieldnames = list(reader.fieldnames or [])
     if fieldnames == KB_FIELDNAMES:
         return
+    fieldname_set = set(fieldnames)
+    has_keyword_timestamp = "keyword_updated_at" in fieldname_set or "keyword_created_at" in fieldname_set
+    required = {"merchant_name", "keywords", "link"}
+    if required.issubset(fieldname_set) and has_keyword_timestamp:
+        return
     raise ValueError(
         f"Merchant KB schema mismatch in {path}. "
         f"Expected columns {KB_FIELDNAMES}, got {fieldnames}."
@@ -92,7 +97,17 @@ def validate_kb_fieldnames(path: Path, reader: csv.DictReader) -> None:
 
 
 def normalize_kb_row(row: dict[str, str]) -> dict[str, str]:
-    return {key: row.get(key, "") or "" for key in KB_FIELDNAMES}
+    keyword_updated_at = normalize_space(row.get("keyword_updated_at", ""))
+    if not keyword_updated_at:
+        keyword_updated_at = normalize_space(row.get("keyword_created_at", ""))
+    return {
+        "merchant_name": normalize_space(row.get("merchant_name", "")),
+        "keywords": normalize_space(row.get("keywords", "") or row.get("keyword", "")),
+        "link": safe_url(row.get("link", "")),
+        "category": clean_category(row.get("category", "")),
+        "keyword_updated_at": keyword_updated_at,
+        "category_updated_at": normalize_space(row.get("category_updated_at", "")),
+    }
 
 
 def load_merchant_kb_rows(path: Path) -> list[dict[str, str]]:
