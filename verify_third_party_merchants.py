@@ -105,11 +105,6 @@ def digit_count(value: str) -> int:
     return sum(1 for char in value if char.isdigit())
 
 
-def shorten_text(value: str, max_len: int = 80) -> str:
-    text = normalize_space(value)
-    if len(text) <= max_len:
-        return text
-    return f"{text[: max_len - 3]}..."
 
 
 def extract_literal_substring(raw_value: str, candidate: str) -> str:
@@ -828,42 +823,25 @@ def process_file(args: argparse.Namespace) -> None:
     def rows_waiting() -> int:
         return stats["rows_total"] - stats["rows_processed"]
 
-    def print_progress(stage: str) -> None:
+    def print_stage(label: str) -> None:
+        pct = stats["rows_processed"] / stats["rows_total"] * 100 if stats["rows_total"] else 0
         print(
-            f"Progress stage={stage} rows={stats['rows_processed']}/{stats['rows_total']} "
-            f"waiting={rows_waiting()} merchants={len(identified_merchant_names)}",
+            f"[{label}] done={stats['rows_processed']}/{stats['rows_total']} "
+            f"({pct:.1f}%) waiting={rows_waiting()} merchants={len(identified_merchant_names)}",
             flush=True,
         )
 
-    def print_candidate(candidate_index: int, candidate_total: int, raw_value: str, frequency: int) -> None:
+    def print_batch_summary(batch_num: int, batch_resolved: int, batch_unresolved: int) -> None:
+        pct = stats["rows_processed"] / stats["rows_total"] * 100 if stats["rows_total"] else 0
         print(
-            f"Candidate {candidate_index}/{candidate_total} frequency={frequency} "
-            f"text={shorten_text(raw_value)!r}",
+            f"Batch {batch_num} api_calls={stats['api_calls']} "
+            f"resolved={batch_resolved} unresolved={batch_unresolved} "
+            f"done={stats['rows_processed']}/{stats['rows_total']} ({pct:.1f}%) "
+            f"merchants={len(identified_merchant_names)}",
             flush=True,
         )
 
-    def print_api_result(
-        raw_value: str,
-        decision: MerchantDecision,
-        matched: int,
-        keyword_matched: int,
-        direct_matched: int,
-    ) -> None:
-        if decision.is_real_merchant:
-            print(
-                f"API merchant={decision.standardized!r} keyword={decision.keyword!r} "
-                f"matched={matched} keyword_batch={keyword_matched} exact_batch={direct_matched} "
-                f"text={shorten_text(raw_value)!r}",
-                flush=True,
-            )
-            return
-        print(
-            f"API unresolved matched={matched} reason={shorten_text(decision.reason, 120)!r} "
-            f"text={shorten_text(raw_value)!r}",
-            flush=True,
-        )
-
-    print_progress("start")
+    print_stage("start")
 
     def mark_processed(
         index: int,
@@ -994,7 +972,7 @@ def process_file(args: argparse.Namespace) -> None:
                 keyword_match_source=MatchSource.KNOWLEDGE_BASE_KEYWORD,
                 matched_from_text=row.get("text", ""),
             )
-        print_progress("knowledge_base")
+        print_stage("knowledge_base")
 
     cache_hit_found = False
     for canonical_value in list(cache_store.records):
@@ -1014,7 +992,7 @@ def process_file(args: argparse.Namespace) -> None:
         if matched:
             cache_hit_found = True
     if cache_hit_found:
-        print_progress("cache")
+        print_stage("cache")
 
     candidates: list[tuple[tuple[int, int, int, int, int], str, str, int]] = []
     for canonical_value, indices in exact_groups.items():
@@ -1037,7 +1015,7 @@ def process_file(args: argparse.Namespace) -> None:
             )
         )
     candidates.sort(reverse=True)
-    print_progress("candidates")
+    print_stage("candidates")
 
     client = DeepSeekClient(
         api_key=args.api_key,
@@ -1050,9 +1028,9 @@ def process_file(args: argparse.Namespace) -> None:
         reasoning_effort=args.reasoning_effort,
     )
 
-    candidate_total = len(candidates)
     batch_size = args.batch_size if args.batch_size > 0 else 1
     candidate_index = 0
+    batch_num = 0
     while candidate_index < len(candidates):
         batch_items: list[dict[str, str]] = []
         batch_candidates: list[tuple[str, str, int]] = []
@@ -1062,7 +1040,6 @@ def process_file(args: argparse.Namespace) -> None:
                 continue
             if args.max_api_calls is not None and stats["api_calls"] >= args.max_api_calls:
                 break
-            print_candidate(i + 1, candidate_total, raw_value, frequency)
             batch_items.append({
                 "id": canonical_value,
                 "text": raw_value,
@@ -1074,9 +1051,12 @@ def process_file(args: argparse.Namespace) -> None:
             candidate_index += batch_size
             continue
 
+        batch_num += 1
         stats["api_calls"] += 1
         decisions = client.verify_merchant_batch(batch_items)
 
+        batch_resolved = 0
+        batch_unresolved = 0
         for canonical_value, raw_value, frequency in batch_candidates:
             decision = decisions.get(canonical_value)
             if decision is None:
@@ -1091,15 +1071,19 @@ def process_file(args: argparse.Namespace) -> None:
                 keyword_match_source=MatchSource.AI_KEYWORD,
                 matched_from_text=raw_value,
             )
-            print_api_result(raw_value, decision, matched, keyword_matched, direct_matched)
-            if decision.is_real_merchant and matched:
-                pending_ai_kb_candidates.append(
-                    MerchantKBCandidate(
-                        merchant_name=decision.standardized,
-                        keyword=decision.keyword,
-                        link=decision.link,
+            if decision.is_real_merchant:
+                batch_resolved += 1
+                if matched:
+                    pending_ai_kb_candidates.append(
+                        MerchantKBCandidate(
+                            merchant_name=decision.standardized,
+                            keyword=decision.keyword,
+                            link=decision.link,
+                        )
                     )
-                )
+            else:
+                batch_unresolved += 1
+        print_batch_summary(batch_num, batch_resolved, batch_unresolved)
 
         cache_store.save()
 
@@ -1108,9 +1092,6 @@ def process_file(args: argparse.Namespace) -> None:
 
         if args.merchant_kb_save_every and stats["api_calls"] % args.merchant_kb_save_every == 0:
             flush_pending_merchant_kb()
-
-        if args.progress_every and stats["api_calls"] % args.progress_every == 0:
-            print_progress("api")
 
         candidate_index += batch_size
 
@@ -1122,7 +1103,7 @@ def process_file(args: argparse.Namespace) -> None:
     flush_pending_merchant_kb()
     write_rows(args.output, rows, fieldnames)
     atexit.unregister(flush_checkpoint_on_exit)
-    print_progress("finished")
+    print_stage("finished")
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -1160,7 +1141,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=DEFAULT_REASONING_EFFORT,
         help='Reasoning effort sent to the model. Defaults to xhigh. Use "none" to omit.',
     )
-    parser.add_argument("--progress-every", type=int, default=20)
     parser.add_argument(
         "--checkpoint-every",
         type=int,
