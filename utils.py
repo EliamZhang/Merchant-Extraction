@@ -14,6 +14,27 @@ def normalize_space(value: str) -> str:
     return re.sub(r"\s+", " ", value or "").strip()
 
 
+def normalize_search_text(value: str) -> str:
+    cleaned = re.sub(r"[^0-9A-Za-z]+", " ", value or "")
+    return normalize_space(cleaned).casefold()
+
+
+KEYWORD_SEPARATOR = " | "
+
+
+def split_kb_keywords(value: str) -> list[str]:
+    keywords: list[str] = []
+    seen: set[str] = set()
+    for keyword in re.split(r"\s*\|\s*", normalize_space(value)):
+        cleaned = normalize_space(keyword)
+        normalized = normalize_search_text(cleaned)
+        if not cleaned or not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        keywords.append(cleaned)
+    return keywords
+
+
 def clean_output_value(value: str) -> str:
     return normalize_space(value).strip('"').strip("'")
 

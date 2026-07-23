@@ -17,6 +17,8 @@ from utils import (
     open_csv_dict_reader,
     post_json,
     safe_url,
+    split_kb_keywords,
+    KEYWORD_SEPARATOR,
 )
 
 
@@ -93,7 +95,7 @@ def validate_kb_fieldnames(path: Path, reader: csv.DictReader) -> None:
 def normalize_kb_row(row: dict[str, str]) -> dict[str, str]:
     return {
         "merchant_name": normalize_space(row.get("merchant_name", "")),
-        "keywords": normalize_space(row.get("keywords", "")),
+        "keywords": KEYWORD_SEPARATOR.join(split_kb_keywords(row.get("keywords", ""))),
         "link": safe_url(row.get("link", "")),
         "category": clean_category(row.get("category", "")),
         "keyword_updated_at": normalize_space(row.get("keyword_updated_at", "")),

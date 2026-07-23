@@ -18,9 +18,12 @@ from utils import (
     clean_output_value,
     extract_json_object,
     normalize_space,
+    normalize_search_text,
     open_csv_dict_reader,
     post_json,
     safe_url,
+    split_kb_keywords,
+    KEYWORD_SEPARATOR,
 )
 
 
@@ -91,11 +94,6 @@ class MatchSource(str, Enum):
     AI_DIRECT = "ai_direct"
     AI_KEYWORD = "ai_keyword"
     UNRESOLVED = "unresolved"
-
-
-def normalize_search_text(value: str) -> str:
-    cleaned = re.sub(r"[^0-9A-Za-z]+", " ", value or "")
-    return normalize_space(cleaned).casefold()
 
 
 def alpha_count(value: str) -> int:
@@ -500,7 +498,6 @@ KB_FIELDNAMES = [
     "keyword_updated_at",
     "category_updated_at",
 ]
-KEYWORD_SEPARATOR = " | "
 
 
 @dataclass
@@ -508,19 +505,6 @@ class MerchantKBCandidate:
     merchant_name: str
     keyword: str
     link: str
-
-
-def split_kb_keywords(value: str) -> list[str]:
-    keywords: list[str] = []
-    seen: set[str] = set()
-    for keyword in re.split(r"\s*\|\s*", normalize_space(value)):
-        cleaned = normalize_space(keyword)
-        normalized = normalize_search_text(cleaned)
-        if not cleaned or not normalized or normalized in seen:
-            continue
-        seen.add(normalized)
-        keywords.append(cleaned)
-    return keywords
 
 
 def normalize_kb_row(row: dict[str, str]) -> dict[str, str]:
