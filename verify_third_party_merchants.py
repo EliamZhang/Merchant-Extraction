@@ -483,6 +483,15 @@ class KnowledgeBaseEntry:
     first_token: str
 
 
+def validate_kb_fieldnames(path: Path, reader: csv.DictReader) -> None:
+    fieldnames = list(reader.fieldnames or [])
+    if fieldnames != KB_FIELDNAMES:
+        raise ValueError(
+            f"Merchant KB schema mismatch in {path}. "
+            f"Expected columns {KB_FIELDNAMES}, got {fieldnames}."
+        )
+
+
 KB_FIELDNAMES = [
     "merchant_name",
     "keywords",
@@ -540,6 +549,7 @@ class MerchantKBUpdater:
         if self.path.exists():
             with self.path.open("r", encoding="utf-8-sig", newline="") as handle:
                 reader = csv.DictReader(handle)
+                validate_kb_fieldnames(self.path, reader)
                 for row in reader:
                     normalized_row = normalize_kb_row({key: value or "" for key, value in row.items()})
                     normalized_name = normalize_search_text(normalized_row["merchant_name"])
@@ -678,6 +688,7 @@ def load_merchant_kb(path: Path) -> list[KnowledgeBaseEntry]:
     if not path.exists():
         return []
     reader = open_csv_dict_reader(path)
+    validate_kb_fieldnames(path, reader)
     entries: list[KnowledgeBaseEntry] = []
     seen: set[tuple[str, str]] = set()
     for row in reader:
