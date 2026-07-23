@@ -28,6 +28,8 @@ DEFAULT_INPUT = Path("third_party_dedup.csv")
 DEFAULT_OUTPUT = Path("output/third_party_dedup_verified.csv")
 DEFAULT_CACHE = Path("cache/third_party_merchant_verification_cache.json")
 DEFAULT_MERCHANT_KB = Path("merchant_kb.csv")
+DEFAULT_THINKING_TYPE = os.environ.get("DEEPSEEK_THINKING_TYPE", "enabled")
+DEFAULT_REASONING_EFFORT = os.environ.get("DEEPSEEK_REASONING_EFFORT", "medium")
 EMPTY_FIELDS = ("standardized", "keyword", "link")
 TRACE_FIELDS = ("match_source", "matched_from_text")
 GENERIC_TRANSFER_PREFIXES = (
@@ -303,6 +305,8 @@ class DeepSeekClient:
         timeout_seconds: int,
         max_retries: int,
         retry_delay_seconds: float,
+        thinking_type: str = "",
+        reasoning_effort: str = "",
         prompt_config: MerchantPromptConfig | None = None,
         response_validator: MerchantResponseValidator | None = None,
     ) -> None:
@@ -312,6 +316,8 @@ class DeepSeekClient:
         self.timeout_seconds = timeout_seconds
         self.max_retries = max_retries
         self.retry_delay_seconds = retry_delay_seconds
+        self.thinking_type = thinking_type
+        self.reasoning_effort = reasoning_effort
         self.prompt_config = prompt_config or MerchantPromptConfig()
         self.response_validator = response_validator or MerchantResponseValidator()
 
@@ -339,6 +345,10 @@ class DeepSeekClient:
             "enable_search": True,
             "search_enabled": True,
         }
+        if self.thinking_type and self.thinking_type.casefold() != "none":
+            body["thinking"] = {"type": self.thinking_type}
+        if self.reasoning_effort and self.reasoning_effort.casefold() != "none":
+            body["reasoning_effort"] = self.reasoning_effort
 
         last_error: Exception | None = None
         for attempt in range(1, self.max_retries + 1):
@@ -913,6 +923,8 @@ def process_file(args: argparse.Namespace) -> None:
         timeout_seconds=args.timeout_seconds,
         max_retries=args.max_retries,
         retry_delay_seconds=args.retry_delay_seconds,
+        thinking_type=args.thinking_type,
+        reasoning_effort=args.reasoning_effort,
     )
 
     candidate_total = len(candidates)
@@ -994,6 +1006,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout-seconds", type=int, default=90)
     parser.add_argument("--max-retries", type=int, default=3)
     parser.add_argument("--retry-delay-seconds", type=float, default=2.0)
+    parser.add_argument(
+        "--thinking-type",
+        default=DEFAULT_THINKING_TYPE,
+        help='Thinking mode sent as thinking.type. Defaults to enabled. Use "none" to omit.',
+    )
+    parser.add_argument(
+        "--reasoning-effort",
+        default=DEFAULT_REASONING_EFFORT,
+        help='Reasoning effort sent to the model. Defaults to medium. Use "none" to omit.',
+    )
     parser.add_argument("--progress-every", type=int, default=20)
     parser.add_argument(
         "--checkpoint-every",
