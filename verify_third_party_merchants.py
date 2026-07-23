@@ -515,21 +515,12 @@ def split_kb_keywords(value: str) -> list[str]:
 
 
 def normalize_kb_row(row: dict[str, str]) -> dict[str, str]:
-    keyword_values = split_kb_keywords(row.get("keywords", ""))
-    legacy_keyword = normalize_space(row.get("keyword", ""))
-    if legacy_keyword:
-        keyword_values = split_kb_keywords(KEYWORD_SEPARATOR.join([*keyword_values, legacy_keyword]))
-
-    keyword_updated_at = normalize_space(row.get("keyword_updated_at", ""))
-    if not keyword_updated_at:
-        keyword_updated_at = normalize_space(row.get("keyword_created_at", ""))
-
     return {
         "merchant_name": normalize_space(row.get("merchant_name", "")),
-        "keywords": KEYWORD_SEPARATOR.join(keyword_values),
+        "keywords": KEYWORD_SEPARATOR.join(split_kb_keywords(row.get("keywords", ""))),
         "link": safe_url(row.get("link", "")),
         "category": clean_output_value(row.get("category", "")),
-        "keyword_updated_at": keyword_updated_at,
+        "keyword_updated_at": normalize_space(row.get("keyword_updated_at", "")),
         "category_updated_at": normalize_space(row.get("category_updated_at", "")),
     }
 
