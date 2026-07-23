@@ -24,9 +24,9 @@ from utils import (
 )
 
 
-DEFAULT_INPUT = Path("third_party_dedup.csv")
-DEFAULT_OUTPUT = Path("output/third_party_dedup_verified.csv")
-DEFAULT_CACHE = Path("cache/third_party_merchant_verification_cache.json")
+DEFAULT_INPUT = Path("sample.csv")
+DEFAULT_OUTPUT = Path("output/sample_verified.csv")
+DEFAULT_CACHE = Path("cache/sample_verification_cache.json")
 DEFAULT_MERCHANT_KB = Path("merchant_kb.csv")
 DEFAULT_THINKING_TYPE = os.environ.get("DEEPSEEK_THINKING_TYPE", "enabled")
 DEFAULT_REASONING_EFFORT = os.environ.get("DEEPSEEK_REASONING_EFFORT", "medium")
