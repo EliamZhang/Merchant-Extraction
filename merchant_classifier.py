@@ -186,17 +186,21 @@ class MerchantCategoryPromptConfig:
         return (
             "You are classifying merchants from a merchant knowledge base.\n"
             "Use merchant_name as the primary evidence. Use keywords and link only as supporting evidence.\n"
-            "Do not rewrite merchant_name or keywords.\n"
-            "If your API/provider supports web search, check the merchant's official website or any other reliable website before deciding the category.\n"
+            "Use web search to check the merchant's official website or reliable business listings before deciding the category.\n"
             "Choose exactly one category when the merchant's business type clearly fits the enum. "
             "Use an empty string when the category is unclear.\n"
-            "Return link only when the category decision is reasonably confident.\n"
-            "If you return link, prefer the merchant's official website.\n"
-            "If no official website is available, you may use a reliable business listing, map listing, or trusted directory page.\n"
-            "If the category is unclear or the URL is not reliable, return an empty string for link.\n"
+            "Return a link to the merchant's official website when confident; otherwise return an empty string.\n"
             "Return JSON only as an object with key results. results must be an array with one result per input id.\n"
             "Each result must have keys: id, category, link, reason.\n"
             f"Allowed category enum: {json.dumps(MERCHANT_CATEGORIES)}.\n"
+            "Examples:\n"
+            '- { "merchant_name": "Walmart", "keywords": "walmart supercenter retail department store", "category": "Department Stores" }\n'
+            '- { "merchant_name": "Spotify", "keywords": "spotify music streaming", "category": "Entertainment" }\n'
+            '- { "merchant_name": "Uber", "keywords": "uber ride rideshare", "category": "Transport" }\n'
+            '- { "merchant_name": "CVS Pharmacy", "keywords": "cvs pharmacy drugstore health", "category": "Health" }\n'
+            '- { "merchant_name": "DoorDash", "keywords": "doordash food delivery", "category": "Dining Out" }\n'
+            '- { "merchant_name": "Hertz", "keywords": "hertz car rental", "category": "Travel" }\n'
+            '- { "merchant_name": "Sephora", "keywords": "sephora cosmetics beauty makeup", "category": "Personal Care" }\n'
             f"items: {json.dumps(payload, ensure_ascii=False)}"
         )
 
