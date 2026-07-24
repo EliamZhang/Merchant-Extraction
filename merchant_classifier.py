@@ -30,14 +30,11 @@ DEFAULT_THINKING_TYPE = os.environ.get("DEEPSEEK_THINKING_TYPE", "enabled")
 DEFAULT_REASONING_EFFORT = os.environ.get("DEEPSEEK_REASONING_EFFORT", "xhigh")
 MERCHANT_CATEGORIES = (
     "Automotive",
-    "Debt Collection",
-    "Debt Consolidation",
     "Department Stores",
     "Dining Out",
     "Donations",
     "Education",
     "Entertainment",
-    "Financial Services",
     "Gambling",
     "Groceries",
     "Gyms and other memberships",
@@ -47,8 +44,6 @@ MERCHANT_CATEGORIES = (
     "Insurance",
     "Personal Care",
     "Pet Care",
-    "Professional Services",
-    "Property and Strata",
     "Rent",
     "Retail",
     "Subscription TV",
