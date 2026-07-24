@@ -1129,8 +1129,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--api-key", default=os.environ.get("DEEPSEEK_API_KEY", ""))
     parser.add_argument("--timeout-seconds", type=int, default=120)
-    parser.add_argument("--max-retries", type=int, default=5)
-    parser.add_argument("--retry-delay-seconds", type=float, default=3.0)
+    parser.add_argument("--max-retries", type=int, default=20)
+    parser.add_argument("--retry-delay-seconds", type=float, default=10.0)
     parser.add_argument(
         "--thinking-type",
         default=DEFAULT_THINKING_TYPE,
