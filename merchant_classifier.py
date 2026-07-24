@@ -26,8 +26,8 @@ DEFAULT_MERCHANT_KB = Path("merchant_kb.csv")
 DEFAULT_CACHE = Path("cache/merchant_category_cache.json")
 DEFAULT_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-pro")
-DEFAULT_THINKING_TYPE = os.environ.get("DEEPSEEK_THINKING_TYPE", "enabled")
-DEFAULT_REASONING_EFFORT = os.environ.get("DEEPSEEK_REASONING_EFFORT", "xhigh")
+DEFAULT_THINKING_TYPE = os.environ.get("DEEPSEEK_THINKING_TYPE", "none")
+DEFAULT_REASONING_EFFORT = os.environ.get("DEEPSEEK_REASONING_EFFORT", "none")
 MERCHANT_CATEGORIES = (
     "Automotive",
     "Department Stores",
@@ -421,6 +421,7 @@ def classify_merchant_kb(
     row_limit: int | None = None,
     dry_run: bool = False,
     save_every_batches: int = 10,
+    cache_save_every_batches: int = 10,
     progress: bool = True,
     verbose: bool = False,
 ) -> dict[str, int]:
@@ -458,6 +459,8 @@ def classify_merchant_kb(
         raise ValueError("max_retries must be at least 1.")
     if save_every_batches < 0:
         raise ValueError("save_every_batches must be 0 or greater.")
+    if cache_save_every_batches < 0:
+        raise ValueError("cache_save_every_batches must be 0 or greater.")
 
     final_output_path = output_path or path
     dirty = False
@@ -509,13 +512,17 @@ def classify_merchant_kb(
             flush=True,
         )
 
-    def save_on_exit() -> None:
+    def save_cache_if_dirty() -> None:
         nonlocal cache_dirty
+        if not cache_dirty:
+            return
+        cache_store.save()
+        cache_dirty = False
+
+    def save_on_exit() -> None:
         if stats["api_calls"] <= 0 and stats["cache_hits"] <= 0:
             return
-        if cache_dirty:
-            cache_store.save()
-            cache_dirty = False
+        save_cache_if_dirty()
         if dirty:
             save_rows("exit", force=True)
         print_exit_summary("exit")
@@ -626,9 +633,8 @@ def classify_merchant_kb(
                     f"Classified merchant={rows[row_index].get('merchant_name', '')!r} category={category!r}",
                     flush=True,
                 )
-        if cache_dirty:
-            cache_store.save()
-            cache_dirty = False
+        if cache_save_every_batches and stats["api_calls"] % cache_save_every_batches == 0:
+            save_cache_if_dirty()
         if progress:
             print(
                 f"Batch {batch_number}/{batch_total} done "
@@ -641,8 +647,7 @@ def classify_merchant_kb(
 
     if dirty or output_path is not None:
         save_rows("final", force=True)
-    if cache_dirty:
-        cache_store.save()
+    save_cache_if_dirty()
     atexit.unregister(save_on_exit)
     return stats
 
@@ -669,12 +674,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--thinking-type",
         default=DEFAULT_THINKING_TYPE,
-        help='Thinking mode sent as thinking.type. Defaults to enabled. Use "none" to omit.',
+        help='Thinking mode sent as thinking.type. Defaults to none. Set "enabled" to include thinking.',
     )
     parser.add_argument(
         "--reasoning-effort",
         default=DEFAULT_REASONING_EFFORT,
-        help='Reasoning effort sent to the model. Defaults to xhigh. Use "none" to omit.',
+        help='Reasoning effort sent to the model. Defaults to none.',
     )
     parser.add_argument("--row-limit", type=int, default=None)
     parser.add_argument(
@@ -682,6 +687,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=int,
         default=10,
         help="Save merchant KB every N API batches. Default is 10. Use 0 to save only at the end or on exit.",
+    )
+    parser.add_argument(
+        "--cache-save-every",
+        type=int,
+        default=10,
+        help="Save classification cache every N API batches. Use 1 for safest writes or 0 to save only at the end/on exit.",
     )
     parser.add_argument(
         "--include-existing",
@@ -708,6 +719,8 @@ def main() -> int:
         parser.error("--max-retries must be at least 1.")
     if args.save_every < 0:
         parser.error("--save-every must be 0 or greater.")
+    if args.cache_save_every < 0:
+        parser.error("--cache-save-every must be 0 or greater.")
 
     stats = classify_merchant_kb(
         path=args.merchant_kb,
@@ -726,6 +739,7 @@ def main() -> int:
         row_limit=args.row_limit,
         dry_run=args.dry_run_stats,
         save_every_batches=args.save_every,
+        cache_save_every_batches=args.cache_save_every,
         verbose=args.verbose,
     )
     print(

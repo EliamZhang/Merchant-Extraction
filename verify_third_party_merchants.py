@@ -32,8 +32,8 @@ DEFAULT_OUTPUT = Path("output/sample_verified.csv")
 DEFAULT_CACHE = Path("cache/sample_verification_cache.json")
 DEFAULT_MERCHANT_KB = Path("merchant_kb.csv")
 DEFAULT_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-pro")
-DEFAULT_THINKING_TYPE = os.environ.get("DEEPSEEK_THINKING_TYPE", "enabled")
-DEFAULT_REASONING_EFFORT = os.environ.get("DEEPSEEK_REASONING_EFFORT", "xhigh")
+DEFAULT_THINKING_TYPE = os.environ.get("DEEPSEEK_THINKING_TYPE", "none")
+DEFAULT_REASONING_EFFORT = os.environ.get("DEEPSEEK_REASONING_EFFORT", "none")
 EMPTY_FIELDS = ("standardized", "keyword", "link")
 TRACE_FIELDS = ("match_source", "matched_from_text")
 GENERIC_TRANSFER_PREFIXES = (
@@ -819,6 +819,7 @@ def process_file(args: argparse.Namespace) -> None:
     identified_merchant_names: set[str] = set()
     pending_ai_kb_candidates: list[MerchantKBCandidate] = []
     checkpoint_written_at_call = -1
+    cache_dirty = False
 
     def rows_waiting() -> int:
         return stats["rows_total"] - stats["rows_processed"]
@@ -904,6 +905,13 @@ def process_file(args: argparse.Namespace) -> None:
         write_rows(checkpoint_path, rows, fieldnames)
         checkpoint_written_at_call = stats["api_calls"]
 
+    def save_cache_if_dirty() -> None:
+        nonlocal cache_dirty
+        if not cache_dirty:
+            return
+        cache_store.save()
+        cache_dirty = False
+
     merchant_kb_update_enabled = not args.skip_merchant_kb_update
 
     def flush_pending_merchant_kb() -> None:
@@ -916,9 +924,9 @@ def process_file(args: argparse.Namespace) -> None:
         if stats["api_calls"] <= 0:
             return
         flush_pending_merchant_kb()
+        save_cache_if_dirty()
         if stats["api_calls"] == checkpoint_written_at_call:
             return
-        cache_store.save()
         write_checkpoint(force=True)
 
     atexit.register(flush_checkpoint_on_exit)
@@ -1064,6 +1072,7 @@ def process_file(args: argparse.Namespace) -> None:
 
             if decision.should_cache():
                 cache_store.set(canonical_value, decision)
+                cache_dirty = True
             matched, keyword_matched, direct_matched = apply_decision(
                 canonical_value,
                 decision,
@@ -1085,7 +1094,8 @@ def process_file(args: argparse.Namespace) -> None:
                 batch_unresolved += 1
         print_batch_summary(batch_num, batch_resolved, batch_unresolved)
 
-        cache_store.save()
+        if args.cache_save_every and stats["api_calls"] % args.cache_save_every == 0:
+            save_cache_if_dirty()
 
         if args.checkpoint_every and stats["api_calls"] % args.checkpoint_every == 0:
             write_checkpoint()
@@ -1099,7 +1109,7 @@ def process_file(args: argparse.Namespace) -> None:
         if not done:
             mark_processed(idx, None, match_source=MatchSource.UNRESOLVED)
 
-    cache_store.save()
+    save_cache_if_dirty()
     flush_pending_merchant_kb()
     write_rows(args.output, rows, fieldnames)
     atexit.unregister(flush_checkpoint_on_exit)
@@ -1134,12 +1144,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--thinking-type",
         default=DEFAULT_THINKING_TYPE,
-        help='Thinking mode sent as thinking.type. Defaults to enabled. Use "none" to omit.',
+        help='Thinking mode sent as thinking.type. Defaults to none. Set "enabled" to include thinking.',
     )
     parser.add_argument(
         "--reasoning-effort",
         default=DEFAULT_REASONING_EFFORT,
-        help='Reasoning effort sent to the model. Defaults to xhigh. Use "none" to omit.',
+        help='Reasoning effort sent to the model. Defaults to none.',
+    )
+    parser.add_argument(
+        "--cache-save-every",
+        type=int,
+        default=10,
+        help="Save verification cache every N API calls. Use 1 for safest writes or 0 to save only at the end/on exit.",
     )
     parser.add_argument(
         "--checkpoint-every",
@@ -1168,6 +1184,8 @@ def main() -> int:
         parser.error("--max-retries must be at least 1.")
     if args.merchant_kb_save_every < 0:
         parser.error("--merchant-kb-save-every must be 0 or greater.")
+    if args.cache_save_every < 0:
+        parser.error("--cache-save-every must be 0 or greater.")
     if args.checkpoint_every < 0:
         parser.error("--checkpoint-every must be 0 or greater.")
     process_file(args)

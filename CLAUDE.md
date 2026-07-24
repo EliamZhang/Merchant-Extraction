@@ -13,7 +13,7 @@ This project has two pipelines that process merchant/transaction data using Deep
 
 ### `merchant_classifier.py`
 
-Classifies merchants from `merchant_kb.csv` into one of 27 predefined categories. Calls DeepSeek in batches (default size 50) with JSON-mode responses and web search enabled.
+Classifies merchants from `merchant_kb.csv` into one of 27 predefined categories. Calls DeepSeek in batches (default size 5) with JSON-mode responses and web search enabled.
 
 **Data flow:** `merchant_kb.csv` (merchant names + keywords, some or all missing `category`) → `merchant_classifier.py` → `merchant_kb.csv` (with `category` filled)
 
@@ -24,7 +24,7 @@ python merchant_classifier.py \
   --cache cache/merchant_category_cache.json
 ```
 
-Key flags: `--batch-size N`, `--row-limit N`, `--include-existing` (reclassify already-categorized rows), `--dry-run-stats`, `--save-every N`, `--thinking-type`, `--reasoning-effort`, `--timeout-seconds`, `--max-retries`
+Key flags: `--batch-size N`, `--row-limit N`, `--include-existing` (reclassify already-categorized rows), `--dry-run-stats`, `--save-every N`, `--cache-save-every N`, `--thinking-type`, `--reasoning-effort`, `--timeout-seconds`, `--max-retries`
 
 ### `verify_third_party_merchants.py`
 
@@ -36,7 +36,7 @@ Verifies bank-transaction counterparty strings against real merchants using Deep
 python verify_third_party_merchants.py
 ```
 
-Key flags: `--batch-size N` (default 5, candidates per API call; reduce if hitting 504 timeouts), `--max-api-calls N`, `--row-limit N`, `--skip-merchant-kb-update`, `--merchant-kb-save-every N`, `--checkpoint-every N`, `--progress-every N`, `--thinking-type`, `--reasoning-effort`, `--timeout-seconds`, `--max-retries`
+Key flags: `--batch-size N` (default 5, candidates per API call; reduce if hitting 504 timeouts), `--max-api-calls N`, `--row-limit N`, `--skip-merchant-kb-update`, `--merchant-kb-save-every N`, `--cache-save-every N`, `--checkpoint-every N`, `--progress-every N`, `--thinking-type`, `--reasoning-effort`, `--timeout-seconds`, `--max-retries`
 
 Default paths: `--input sample.csv`, `--output output/sample_verified.csv`, `--cache cache/sample_verification_cache.json`, `--merchant-kb merchant_kb.csv`
 
@@ -69,3 +69,4 @@ Note: `CacheStore` is defined separately in each script (not shared via utils.py
 - API calls include `enable_search: True` and `search_enabled: True` for web search
 - Atomic saves: write to `{filename}.{pid}.tmp`, then `replace()` to target
 - Default env vars for both scripts: `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, `DEEPSEEK_MODEL`, `DEEPSEEK_THINKING_TYPE`, `DEEPSEEK_REASONING_EFFORT`
+- Speed-oriented defaults: both scripts omit `thinking` and `reasoning_effort` unless `DEEPSEEK_THINKING_TYPE` / `DEEPSEEK_REASONING_EFFORT` or CLI flags override them.
