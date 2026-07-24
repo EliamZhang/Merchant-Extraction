@@ -56,7 +56,7 @@ Note: `CacheStore` is defined separately in each script (not shared via utils.py
 
 ### Category enum (hardcoded in `merchant_classifier.py`)
 
-`Automotive`, `Debt Collection`, `Debt Consolidation`, `Department Stores`, `Dining Out`, `Donations`, `Education`, `Entertainment`, `Financial Services`, `Gambling`, `Groceries`, `Gyms and other memberships`, `Health`, `Home Improvement`, `Information`, `Insurance`, `Personal Care`, `Pet Care`, `Professional Services`, `Property and Strata`, `Rent`, `Retail`, `Subscription TV`, `Telecommunications`, `Transport`, `Travel`, `Utilities`
+`Automotive`, `Department Stores`, `Dining Out`, `Donations`, `Education`, `Entertainment`, `Financial Institutions`, `Gambling`, `Groceries`, `Gyms and other memberships`, `Health`, `Home Improvement`, `Information`, `Insurance`, `Personal Care`, `Pet Care`, `Rent`, `Retail`, `Subscription TV`, `Telecommunications`, `Transport`, `Travel`, `Utilities`
 
 ## Important notes
 

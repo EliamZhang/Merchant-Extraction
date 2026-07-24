@@ -35,6 +35,7 @@ MERCHANT_CATEGORIES = (
     "Donations",
     "Education",
     "Entertainment",
+    "Financial Institutions",
     "Gambling",
     "Groceries",
     "Gyms and other memberships",
@@ -188,7 +189,26 @@ class MerchantCategoryPromptConfig:
             "Use merchant_name as the primary evidence. Use keywords and link only as supporting evidence.\n"
             "Use web search to check the merchant's official website or reliable business listings before deciding the category.\n"
             "Choose exactly one category when the merchant's business type clearly fits the enum. "
-            "Use an empty string when the category is unclear.\n"
+            "Use an empty string only when the business type is unknowable even after web search.\n"
+            "Classification guidelines for edge cases:\n"
+            "- Childcare, daycare, preschool, kindergarten → Education\n"
+            "- Pharmacies, chemists, dentists, optometrists, physiotherapists, medical clinics → Health\n"
+            "- Veterinarians, animal hospitals → Pet Care\n"
+            "- Gas stations, car repair, auto parts, car washes, car dealers → Automotive\n"
+            "- Electricians, plumbers, roofers, painters, builders, hardware stores → Home Improvement\n"
+            "- Hair salons, barbers, nail salons, beauty salons, spas, dry cleaners, laundry → Personal Care\n"
+            "- Cafes, restaurants, pubs, bars, taverns, fast food, food delivery → Dining Out\n"
+            "- Bakeries, butchers, liquor stores, bottle shops, specialty food shops → Groceries\n"
+            "- Clothing, shoes, jewellery, bookstores, florists, gift shops, newsagents → Retail\n"
+            "- Hotels, motels, resorts, holiday rentals → Travel\n"
+            "- Parking, toll roads, vehicle registration → Transport\n"
+            "- Storage units, self-storage warehouses → Rent\n"
+            "- Gyms, yoga studios, pilates, fitness centres, personal trainers → Gyms and other memberships\n"
+            "- Cinemas, theatres, museums, zoos, galleries, theme parks → Entertainment\n"
+            "- Accountants, consultants, architects, lawyers, marketing agencies, security companies → use empty string\n"
+            "- Property developers, real estate agencies, holding companies without clear business → use empty string\n"
+            "- Banks, credit unions, building societies, lenders, mortgage providers, investment firms, securities brokers → Financial Institutions\n"
+            "- Tax office, council rates, government fees, fines, public services → Utilities\n"
             "Return a link to the merchant's official website when confident; otherwise return an empty string.\n"
             "Return JSON only as an object with key results. results must be an array with one result per input id.\n"
             "Each result must have keys: id, category, link, reason.\n"
@@ -201,6 +221,9 @@ class MerchantCategoryPromptConfig:
             '- { "merchant_name": "DoorDash", "keywords": "doordash food delivery", "category": "Dining Out" }\n'
             '- { "merchant_name": "Hertz", "keywords": "hertz car rental", "category": "Travel" }\n'
             '- { "merchant_name": "Sephora", "keywords": "sephora cosmetics beauty makeup", "category": "Personal Care" }\n'
+            '- { "merchant_name": "Goodstart Early Learning", "keywords": "goodstart early learning childcare daycare", "category": "Education" }\n'
+            '- { "merchant_name": "Commonwealth Bank", "keywords": "commonwealth bank of australia cba", "category": "Financial Institutions" }\n'
+            '- { "merchant_name": "Australian Taxation Office", "keywords": "ato australian taxation office", "category": "Utilities" }\n'
             f"items: {json.dumps(payload, ensure_ascii=False)}"
         )
 
