@@ -1154,7 +1154,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--cache-save-every",
         type=int,
-        default=10,
+        default=20,
         help="Save verification cache every N API calls. Use 1 for safest writes or 0 to save only at the end/on exit.",
     )
     parser.add_argument(

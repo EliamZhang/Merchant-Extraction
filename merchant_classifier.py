@@ -421,7 +421,7 @@ def classify_merchant_kb(
     row_limit: int | None = None,
     dry_run: bool = False,
     save_every_batches: int = 10,
-    cache_save_every_batches: int = 10,
+    cache_save_every_batches: int = 20,
     progress: bool = True,
     verbose: bool = False,
 ) -> dict[str, int]:
@@ -691,7 +691,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--cache-save-every",
         type=int,
-        default=10,
+        default=20,
         help="Save classification cache every N API batches. Use 1 for safest writes or 0 to save only at the end/on exit.",
     )
     parser.add_argument(
