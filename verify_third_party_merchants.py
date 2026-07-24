@@ -1128,9 +1128,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--base-url", default=os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"))
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--api-key", default=os.environ.get("DEEPSEEK_API_KEY", ""))
-    parser.add_argument("--timeout-seconds", type=int, default=90)
-    parser.add_argument("--max-retries", type=int, default=3)
-    parser.add_argument("--retry-delay-seconds", type=float, default=2.0)
+    parser.add_argument("--timeout-seconds", type=int, default=120)
+    parser.add_argument("--max-retries", type=int, default=5)
+    parser.add_argument("--retry-delay-seconds", type=float, default=3.0)
     parser.add_argument(
         "--thinking-type",
         default=DEFAULT_THINKING_TYPE,
@@ -1154,7 +1154,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Partial CSV path used while the run is still in progress.",
     )
     parser.add_argument("--max-api-calls", type=int, default=None)
-    parser.add_argument("--batch-size", type=int, default=10, help="Number of candidates per API call. Default 10.")
+    parser.add_argument("--batch-size", type=int, default=6, help="Number of candidates per API call. Default 6.")
     parser.add_argument("--row-limit", type=int, default=None)
     return parser
 
