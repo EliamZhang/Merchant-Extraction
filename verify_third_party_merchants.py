@@ -1154,7 +1154,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Partial CSV path used while the run is still in progress.",
     )
     parser.add_argument("--max-api-calls", type=int, default=None)
-    parser.add_argument("--batch-size", type=int, default=6, help="Number of candidates per API call. Default 6.")
+    parser.add_argument("--batch-size", type=int, default=5, help="Number of candidates per API call. Default 5.")
     parser.add_argument("--row-limit", type=int, default=None)
     return parser
 

@@ -36,7 +36,7 @@ Verifies bank-transaction counterparty strings against real merchants using Deep
 python verify_third_party_merchants.py
 ```
 
-Key flags: `--batch-size N` (default 10, candidates per API call; reduce if hitting 504 timeouts), `--max-api-calls N`, `--row-limit N`, `--skip-merchant-kb-update`, `--merchant-kb-save-every N`, `--checkpoint-every N`, `--progress-every N`, `--thinking-type`, `--reasoning-effort`, `--timeout-seconds`, `--max-retries`
+Key flags: `--batch-size N` (default 5, candidates per API call; reduce if hitting 504 timeouts), `--max-api-calls N`, `--row-limit N`, `--skip-merchant-kb-update`, `--merchant-kb-save-every N`, `--checkpoint-every N`, `--progress-every N`, `--thinking-type`, `--reasoning-effort`, `--timeout-seconds`, `--max-retries`
 
 Default paths: `--input sample.csv`, `--output output/sample_verified.csv`, `--cache cache/sample_verification_cache.json`, `--merchant-kb merchant_kb.csv`
 
