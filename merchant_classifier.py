@@ -574,6 +574,7 @@ def classify_merchant_kb(
             )
         classifications = client.classify_merchant_batch([item for _, item in batch])
         stats["api_calls"] += 1
+        batch_failures = 0
         for (row_index, item), classification in zip(batch, classifications):
             stats["rows_classified"] += 1
             if classification.should_cache():
@@ -585,6 +586,12 @@ def classify_merchant_kb(
                 dirty = True
             category = clean_category(classification.category)
             if not category:
+                batch_failures += 1
+                if classification.reason:
+                    print(
+                        f"Skip merchant={item['merchant_name']!r} reason={classification.reason!r}",
+                        flush=True,
+                    )
                 continue
             if rows[row_index].get("category", "") == category:
                 continue
@@ -604,7 +611,7 @@ def classify_merchant_kb(
             print(
                 f"Batch {batch_number}/{batch_total} done "
                 f"classified={stats['rows_classified']} updated={stats['rows_updated']} "
-                f"api_calls={stats['api_calls']}",
+                f"failures={batch_failures} api_calls={stats['api_calls']}",
                 flush=True,
             )
         if save_every_batches and stats["api_calls"] % save_every_batches == 0:
