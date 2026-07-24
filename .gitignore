@@ -1,10 +1,40 @@
+# ── Python ──
 __pycache__/
-*.pyc
-*.checkpoint.csv
-output/*.checkpoint.csv
-*.csv
-*.json
-*.csv
-*.json
-*.csv
-*.json
+*.py[cod]
+*.pyo
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# ── 中间产物（Pipeline 生成，不入库） ──
+data/parsed/
+data/filtered.csv
+data/kb_internal.csv
+data/changelog.csv
+data/*.tmp
+
+# ── 最终产出（太大，通常不入库） ──
+merchant_kb.csv
+merchant_kb_cleaned.csv
+merchant_kb_cleaning_report.csv
+
+# ── 原始报文（太大，不入库） ──
+raw/*.xml
+
+# ── 备份（旧文件存档） ──
+backup/
+
+# ── IDE / Editor ──
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── 临时文件 ──
+*.tmp
+*.bak
+*.log
