@@ -755,8 +755,19 @@ def should_apply_keyword(keyword: str) -> bool:
 
 def process_file(args: argparse.Namespace) -> None:
     rows, input_fieldnames = load_rows(args.input, args.row_limit)
-    if "text" not in input_fieldnames:
+
+    # Normalize case-insensitive "text"/"Text" header to lowercase
+    text_field = None
+    for name in input_fieldnames:
+        if name.lower() == "text":
+            text_field = name
+            break
+    if text_field is None:
         raise ValueError("Input CSV must contain a text column.")
+    if text_field != "text":
+        input_fieldnames[input_fieldnames.index(text_field)] = "text"
+        for row in rows:
+            row["text"] = row.pop(text_field)
 
     checkpoint_path = args.checkpoint_output or default_checkpoint_path(args.output)
 
