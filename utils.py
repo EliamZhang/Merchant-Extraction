@@ -1,5 +1,4 @@
 import csv
-import io
 import json
 import re
 from datetime import datetime, timedelta, timezone
@@ -73,8 +72,7 @@ def china_timestamp_now() -> str:
 
 
 def open_csv_dict_reader(path: Path) -> csv.DictReader:
-    text = path.read_text(encoding="utf-8-sig", errors="replace")
-    return csv.DictReader(io.StringIO(text, newline=""))
+    return csv.DictReader(path.open("r", encoding="utf-8-sig", errors="replace", newline=""))
 
 
 def post_json(
