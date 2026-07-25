@@ -1061,7 +1061,17 @@ def process_file(args: argparse.Namespace) -> None:
 
         batch_num += 1
         stats["api_calls"] += 1
-        decisions = client.verify_merchant_batch(batch_items)
+
+        decisions: dict[str, MerchantDecision] = {}
+        for attempt in range(1, client.max_retries + 1):
+            try:
+                decisions = client.verify_merchant_batch(batch_items)
+                break
+            except Exception as exc:
+                print(f"  Batch {batch_num} attempt {attempt}/{client.max_retries} failed: {exc}", flush=True)
+                if attempt >= client.max_retries:
+                    raise
+                time.sleep(client.retry_delay_seconds * attempt)
 
         batch_resolved = 0
         batch_unresolved = 0

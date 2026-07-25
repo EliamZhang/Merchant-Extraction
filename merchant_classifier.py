@@ -282,14 +282,8 @@ class DeepSeekMerchantClassifier:
             return []
 
         prompt = self.prompt_config.build_batch_user_prompt(items)
-        try:
-            message = self._chat_completion(prompt)
-            return self.response_validator.parse_batch(items, message)
-        except Exception as exc:
-            return [
-                MerchantClassification.empty(item.get("merchant_name", ""), f"classification_failed: {exc}")
-                for item in items
-            ]
+        message = self._chat_completion(prompt)
+        return self.response_validator.parse_batch(items, message)
 
     def _chat_completion(self, prompt: str) -> str:
         body: dict[str, Any] = {
@@ -601,7 +595,16 @@ def classify_merchant_kb(
                 f"classified={stats['rows_classified']} updated={stats['rows_updated']}",
                 flush=True,
             )
-        classifications = client.classify_merchant_batch([item for _, item in batch])
+        classifications = []
+        for attempt in range(1, client.max_retries + 1):
+            try:
+                classifications = client.classify_merchant_batch([item for _, item in batch])
+                break
+            except Exception as exc:
+                print(f"  Batch {batch_number}/{batch_total} attempt {attempt}/{client.max_retries} failed: {exc}", flush=True)
+                if attempt >= client.max_retries:
+                    raise
+                time.sleep(client.retry_delay_seconds * attempt)
         stats["api_calls"] += 1
         batch_failures = 0
         for (row_index, item), classification in zip(batch, classifications):
