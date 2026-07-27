@@ -1055,6 +1055,12 @@ def process_file(args: argparse.Namespace) -> None:
         reasoning_effort=args.reasoning_effort,
     )
 
+    print(
+        f"Verifying merchants model={args.model} thinking_type={args.thinking_type} "
+        f"reasoning_effort={args.reasoning_effort}",
+        flush=True,
+    )
+
     batch_size = args.batch_size if args.batch_size > 0 else 1
     candidate_index = 0
     batch_num = 0
