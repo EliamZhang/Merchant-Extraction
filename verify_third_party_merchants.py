@@ -1010,6 +1010,14 @@ def process_file(args: argparse.Namespace) -> None:
         )
         if matched:
             cache_hit_found = True
+            if decision.is_real_merchant:
+                pending_ai_kb_candidates.append(
+                    MerchantKBCandidate(
+                        merchant_name=decision.standardized,
+                        keyword=decision.keyword,
+                        link=decision.link,
+                    )
+                )
     if cache_hit_found:
         print_stage("cache")
 
@@ -1153,7 +1161,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--merchant-kb-save-every",
         type=int,
-        default=0,
+        default=20,
         help="Merge pending AI-verified merchant keywords into merchant_kb.csv every N API calls. Use 0 to write only at the end.",
     )
     parser.add_argument("--base-url", default=os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"))
