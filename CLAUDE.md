@@ -13,7 +13,7 @@ This project has two pipelines that process merchant/transaction data using Deep
 
 ### `merchant_classifier.py`
 
-Classifies merchants from `merchant_kb.csv` into one of 27 predefined categories. Calls DeepSeek in batches (default size 5) with JSON-mode responses and web search enabled.
+Classifies merchants from `merchant_kb.csv` into one of 23 predefined categories. Calls DeepSeek in batches (default size 5) with JSON-mode responses and web search enabled.
 
 **Data flow:** `merchant_kb.csv` (merchant names + keywords, some or all missing `category`) → `merchant_classifier.py` → `merchant_kb.csv` (with `category` filled)
 
@@ -86,8 +86,8 @@ A third layer (`run_with_retry.sh`) handles complete script crashes with infinit
 ## Important notes
 
 - All CSV and JSON files are in `.gitignore` — they are large data files, not source
-- `merchant_kb.csv` is ~3.6M rows; use `--row-limit` for testing
-- `sample.csv` is ~18M rows (~1.2GB); use `--row-limit` for testing
+- `merchant_kb.csv` is ~8.7K rows; use `--row-limit` for testing
+- `sample.csv` is ~173K rows; use `--row-limit` for testing
 - Cache JSON files are critical for cost control — DeepSeek API calls are not free
 - Both scripts use `atexit` to save progress on interruption (cache, checkpoint, merchant KB)
 - No external dependencies beyond Python stdlib
@@ -96,5 +96,5 @@ A third layer (`run_with_retry.sh`) handles complete script crashes with infinit
 - Default env vars for both scripts: `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, `DEEPSEEK_MODEL`, `DEEPSEEK_THINKING_TYPE`, `DEEPSEEK_REASONING_EFFORT`
 - Speed-oriented defaults: both scripts omit `thinking` and `reasoning_effort` unless `DEEPSEEK_THINKING_TYPE` / `DEEPSEEK_REASONING_EFFORT` or CLI flags override them.
 - `verify_third_party_merchants.py` normalizes CSV header to lowercase `text` if the column is named `Text`
-- Checkpoint and cache are saved every 20 API calls by default (`--cache-save-every 20`, `--checkpoint-every 20`); merchant KB updates default to end-of-run only (`--merchant-kb-save-every 0`)
-- The `load_rows()` function still loads all input rows into memory; for 18M-row files this may cause `MemoryError` — split the file or use `--row-limit`
+- Checkpoint, cache, and merchant KB are saved every 20 API calls by default (`--cache-save-every 20`, `--checkpoint-every 20`, `--merchant-kb-save-every 20`)
+- The `load_rows()` function loads all input rows into memory; for very large files this may cause `MemoryError` — split the file or use `--row-limit`
