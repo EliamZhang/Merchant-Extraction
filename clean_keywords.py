@@ -9,6 +9,7 @@ import argparse
 import csv
 import heapq
 import os
+import re
 import sys
 import tempfile
 from collections import Counter
@@ -20,13 +21,16 @@ from config import (
     FINAL_OUTPUT,
     FINAL_OUTPUT_COLUMNS,
     KNOWN_ABBREVIATIONS,
+    MIN_DISTINCTIVE_KEYWORD_TOKENS,
     MIN_KEYWORD_LEN,
+    PAYMENT_PREFIX_WORDS,
     STOPWORDS,
 )
 
 
 KEYWORD_SEPARATOR = " | "
 REPORT_LIMIT = 500
+TOKEN_RE = re.compile(r"[A-Za-z0-9&']+")
 
 
 def split_keywords(keywords_raw: str) -> list[str]:
@@ -34,7 +38,40 @@ def split_keywords(keywords_raw: str) -> list[str]:
 
 
 def keyword_identity(keyword: str) -> str:
-    return " ".join((keyword or "").split()).casefold()
+    return " ".join(TOKEN_RE.findall(keyword or "")).casefold()
+
+
+def keyword_tokens(keyword: str) -> list[str]:
+    return [token.upper() for token in TOKEN_RE.findall(keyword or "")]
+
+
+def is_known_short_keyword(keyword: str) -> bool:
+    return keyword.upper() in KNOWN_ABBREVIATIONS
+
+
+def strip_noise_tokens(keyword: str) -> tuple[str, list[str]]:
+    """Remove transaction/channel prefixes from one keyword."""
+    tokens = TOKEN_RE.findall(keyword or "")
+    if not tokens:
+        return "", []
+
+    removed: list[str] = []
+
+    while tokens and tokens[0].upper() in PAYMENT_PREFIX_WORDS:
+        removed.append(tokens.pop(0))
+
+    return " ".join(tokens), removed
+
+
+def has_enough_distinctive_tokens(keyword: str) -> bool:
+    tokens = keyword_tokens(keyword)
+    distinctive = [
+        token
+        for token in tokens
+        if token not in STOPWORDS
+        and token not in PAYMENT_PREFIX_WORDS
+    ]
+    return len(distinctive) >= MIN_DISTINCTIVE_KEYWORD_TOKENS
 
 
 def clean_keywords(keywords_raw: str, merchant_name: str) -> tuple[str, list[str], list[str]]:
@@ -47,16 +84,29 @@ def clean_keywords(keywords_raw: str, merchant_name: str) -> tuple[str, list[str
     seen: set[str] = set()
 
     for keyword in split_keywords(keywords_raw):
+        cleaned_keyword, stripped_tokens = strip_noise_tokens(keyword)
+        if not cleaned_keyword:
+            removed.append(f"[NOISE] {keyword}")
+            continue
+
+        if stripped_tokens:
+            removed.append(f"[TRIM] {keyword} -> {cleaned_keyword}")
+
+        keyword = cleaned_keyword
         keyword_upper = keyword.upper()
         keyword_key = keyword_identity(keyword)
         is_single_token = " " not in keyword
 
-        if len(keyword) < MIN_KEYWORD_LEN and keyword_upper not in KNOWN_ABBREVIATIONS:
+        if len(keyword) < MIN_KEYWORD_LEN and not is_known_short_keyword(keyword):
             removed.append(f"[LEN<{MIN_KEYWORD_LEN}] {keyword}")
             continue
 
         if is_single_token and keyword_upper in STOPWORDS:
             removed.append(f"[STOPWORD] {keyword}")
+            continue
+
+        if not has_enough_distinctive_tokens(keyword) and not is_known_short_keyword(keyword):
+            removed.append(f"[GENERIC] {keyword}")
             continue
 
         if keyword_key in seen:
@@ -172,14 +222,21 @@ def process_keywords(
 
                         if removed:
                             stats["rows_with_removed_keywords"] += 1
-                            stats["total_removed"] += len(removed)
                             for item in removed:
                                 if item.startswith("[LEN"):
                                     stats["removed_len"] += 1
+                                    stats["total_removed"] += 1
                                 elif item.startswith("[STOPWORD]"):
                                     stats["removed_stopword"] += 1
+                                    stats["total_removed"] += 1
                                 elif item.startswith("[DUP]"):
                                     stats["removed_dup"] += 1
+                                    stats["total_removed"] += 1
+                                elif item.startswith("[TRIM]"):
+                                    stats["trimmed_noise"] += 1
+                                elif item.startswith("[NOISE]") or item.startswith("[GENERIC]"):
+                                    stats["removed_noise"] += 1
+                                    stats["total_removed"] += 1
                             if report_path:
                                 push_report_detail(
                                     report_heap,
@@ -205,6 +262,8 @@ def process_keywords(
     print(f"    - Length:       {stats['removed_len']:>10,}")
     print(f"    - Stopword:     {stats['removed_stopword']:>10,}")
     print(f"    - Dedup:        {stats['removed_dup']:>10,}")
+    print(f"    - Noise:        {stats['removed_noise']:>10,}")
+    print(f"    - Trimmed:      {stats['trimmed_noise']:>10,}")
 
     if report_path:
         write_report(report_path, report_heap)

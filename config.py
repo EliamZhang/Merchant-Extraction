@@ -46,6 +46,15 @@ STATUS_GONE = "GONE"
 # ═══════════════════════════════════════════════════════
 
 MIN_KEYWORD_LEN = 5  # 最短关键词长度
+MIN_DISTINCTIVE_KEYWORD_TOKENS = 1  # 清理后至少保留多少个非泛化词
+
+# 交易流水中常见的支付/渠道前缀。它们本身不能帮助识别商户，
+# 出现在关键词开头时会被剥离，整条只剩这些词时会被移除。
+PAYMENT_PREFIX_WORDS = frozenset({
+    "AP", "APPLE", "GOOGLE", "PAYPAL", "PP", "SQ", "SQUARE",
+    "TST", "UBEREATS", "DOORDASH", "MENULOG",
+    "WWW", "HTTP", "HTTPS",
+})
 
 # ─── 知名缩写白名单 ───
 # 这些品牌/机构缩写虽然短于 MIN_KEYWORD_LEN，但在银行交易中高频出现，
