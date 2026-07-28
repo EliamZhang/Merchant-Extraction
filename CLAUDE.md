@@ -56,6 +56,16 @@ bash run_with_retry.sh verify_third_party_merchants.py --api-key "$DEEPSEEK_API_
 bash run_with_retry.sh merchant_classifier.py --api-key "$DEEPSEEK_API_KEY" --merchant-kb merchant_kb.csv
 ```
 
+### `run_full_pipeline.sh`
+
+Runs both pipelines in sequence: classify → verify → classify. Each step uses `run_with_retry.sh` for auto-restart on failure.
+
+```bash
+bash run_full_pipeline.sh
+```
+
+Requires `DEEPSEEK_API_KEY` env var. The second classification pass catches new KB entries added during verification.
+
 ### `utils.py`
 
 Shared utilities used by both scripts:
@@ -86,8 +96,8 @@ A third layer (`run_with_retry.sh`) handles complete script crashes with infinit
 ## Important notes
 
 - All CSV and JSON files are in `.gitignore` — they are large data files, not source
-- `merchant_kb.csv` is ~8.7K rows; use `--row-limit` for testing
-- `sample.csv` is ~173K rows; use `--row-limit` for testing
+- `merchant_kb.csv` is ~10.8K rows; use `--row-limit` for testing
+- `sample.csv` is ~59K rows; use `--row-limit` for testing
 - Cache JSON files are critical for cost control — DeepSeek API calls are not free
 - Both scripts use `atexit` to save progress on interruption (cache, checkpoint, merchant KB)
 - No external dependencies beyond Python stdlib
