@@ -12,6 +12,7 @@ BASE_DIR = Path(__file__).resolve().parent
 RAW_DIR = BASE_DIR / "raw"
 DATA_DIR = BASE_DIR / "data"
 BACKUP_DIR = BASE_DIR / "backup"
+ADD_DIR = BASE_DIR / "add"
 
 # ─── 中间产物 ─────────────────────────────────────────
 PARSED_DIR = DATA_DIR / "parsed"           # parse.py 输出（每个 XML 一个 CSV）

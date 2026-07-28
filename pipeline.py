@@ -21,7 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from config import (
-    RAW_DIR, DATA_DIR, PARSED_DIR,
+    ADD_DIR, RAW_DIR, DATA_DIR, PARSED_DIR,
     FILTERED_FILE, INTERNAL_FILE, CHANGELOG_FILE,
     FINAL_OUTPUT, FINAL_OUTPUT_COLUMNS,
 )
@@ -62,6 +62,20 @@ def export_final_csv(internal_path: Path = INTERNAL_FILE, output_path: Path = FI
 
 
 def run_pipeline(args: argparse.Namespace) -> int:
+    """Run the requested pipeline mode."""
+    if args.merge_add:
+        from stages.merge_add import merge_add_files
+
+        stats = merge_add_files(ADD_DIR, FINAL_OUTPUT)
+        print(
+            "[merge-add] "
+            f"Files: {stats['files']:,}  |  "
+            f"Source rows: {stats['source_rows']:,}  |  "
+            f"Updated: {stats['updated_rows']:,}  |  "
+            f"Inserted: {stats['inserted_rows']:,}"
+        )
+        return 0
+
     """按顺序执行全流程."""
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S+00:00")
     start_all = datetime.now()
@@ -187,11 +201,15 @@ Examples:
                         help="只运行指定阶段后停止")
     parser.add_argument("--dry-run", action="store_true",
                         help="只打印将要执行的操作，不实际写入")
+    parser.add_argument("--merge-add", action="store_true",
+                        help="Merge add/*.csv into merchant_kb.csv")
     return parser.parse_args(argv)
 
 
 def main() -> int:
     args = parse_args()
+    if args.merge_add:
+        return run_pipeline(args)
     ensure_directories()
     return run_pipeline(args)
 

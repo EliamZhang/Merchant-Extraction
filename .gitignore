@@ -24,7 +24,9 @@ raw/*.xml
 
 # ── 备份（旧文件存档） ──
 backup/
-
+docs/
+add/
+tests/
 # ── IDE / Editor ──
 .vscode/
 .idea/
