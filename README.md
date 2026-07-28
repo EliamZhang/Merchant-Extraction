@@ -6,7 +6,7 @@
 
 ```
 Business bd/
-├── build_knowledge_base.py  # 官方企业库构建（解析+过滤+合并+分类）
+├── build_knowledge_base.py  # 官方企业库构建（XML 直接合并到 merchant_kb.csv）
 ├── clean_keywords.py        # 关键词清洗
 ├── merge_manual_entries.py  # 手工补充合并
 ├── classify_merchants.py    # AI 分类（DeepSeek）
@@ -15,7 +15,6 @@ Business bd/
 ├── utils.py                 # 通用工具
 ├── xml_input/               # 输入：ABR XML 报文
 ├── manual_entries/          # 输入：手工补充 CSV
-├── data/                    # 中间产物（parsed/, filtered.csv, kb_internal.csv）
 ├── cache/                   # API 调用缓存
 ├── output/                  # 验证输出
 ├── tests/                   # 测试
@@ -26,27 +25,22 @@ Business bd/
 
 ### 工作流 A：ABR 报文 → 知识库
 
-从澳大利亚商业登记 (ABR) 的 XML 报文中提取商户信息，经过过滤、合并、清洗和分类，生成结构化的商户知识库。
+从澳大利亚商业登记 (ABR) 的 XML 报文中提取企业主体，直接补充到 `merchant_kb.csv`。
 
 ```
-xml_input/*.xml  →  build_knowledge_base  →  clean_keywords  →  export  →  merchant_kb.csv
-                    (解析+过滤               (关键词清洗)       (5列投影
-                     合并+分类)                                 排除GONE)
+xml_input/*.xml  →  build_knowledge_base.py  →  merchant_kb.csv
+                    (解析 + 过滤 + 去重 + 关键词补充)
 ```
 
 | 步骤 | 脚本 | 功能 |
 |------|------|------|
-| 1 | `build_knowledge_base.py` | 解析 XML → 过滤 → 增量合并 → 规则分类，输出 `data/kb_internal.csv` |
-| 2 | `clean_keywords.py` | 清洗 keywords：移除过短词、停用词、去重 |
-| 3 | `export_final()` | `kb_internal.csv` → `merchant_kb.csv`（5 列，排除 GONE） |
+| 1 | `build_knowledge_base.py` | 解析 XML → 过滤 PRV/PUB → 合并到 `merchant_kb.csv`；已有主体只补 keywords，新主体追加 |
+| 2 | `clean_keywords.py` | 可选：清洗 keywords：移除过短词、停用词、去重 |
 | — | `merge_manual_entries.py` | 独立通道：将 `manual_entries/*.csv` 手工合并到知识库 |
 
 ```bash
-python build_knowledge_base.py                # 增量模式
-python build_knowledge_base.py --skip-parse   # 跳过 XML 解析
-python clean_keywords.py --input data/kb_internal.csv        # 增量清洗
-python clean_keywords.py --input data/kb_internal.csv --full # 全量清洗
-python -c "from build_knowledge_base import export_final; export_final()"  # 导出
+python build_knowledge_base.py
+python clean_keywords.py --input merchant_kb.csv --full
 ```
 
 ### 工作流 B：AI 处理
@@ -63,18 +57,18 @@ python -c "from build_knowledge_base import export_final; export_final()"  # 导
 ### build_knowledge_base — 官方企业库构建
 
 ```bash
-python build_knowledge_base.py              # 全流程（解析→过滤→合并→分类）
-python build_knowledge_base.py --skip-parse # 跳过 XML 解析
+python build_knowledge_base.py
+python build_knowledge_base.py --xml-dir xml_input --target merchant_kb.csv
 ```
 
-一条命令完成：解析 `xml_input/*.xml` → 过滤（PRV/PUB，排除 2023 年前注销）→ 增量合并 → 规则分类（24 个行业类别），输出 `data/kb_internal.csv`。后续继续执行清洗和导出。
+一条命令完成：解析 `xml_input/*.xml` → 过滤（PRV/PUB，排除 2023 年前注销）→ 直接合并到 `merchant_kb.csv`。如果主体已存在，不新增重复行，只把 ABR 里的别名/交易名补进 keywords。
 
 ### clean_keywords — 关键词清洗
 
 ```bash
-python clean_keywords.py
-python clean_keywords.py --full
-python clean_keywords.py --input data/myfile.csv --report cleaning_report.csv
+python clean_keywords.py --input merchant_kb.csv
+python clean_keywords.py --input merchant_kb.csv --full
+python clean_keywords.py --input merchant_kb.csv --report cleaning_report.csv
 ```
 
 清洗规则：
@@ -140,13 +134,11 @@ python verify_merchants.py \
 
 | 配置项 | 说明 |
 |--------|------|
-| `RAW_DIR` / `DATA_DIR` / `ADD_DIR` | 输入输出目录 |
+| `RAW_DIR` / `ADD_DIR` | 输入目录 |
 | `KEEP_ENTITY_TYPES` | 保留的实体类型（PRV、PUB） |
 | `CANCEL_CUTOFF_DATE` | 注销日期阈值（2023-01-01） |
-| `MATCH_KEY_LENGTH` | SHA256 截断长度 |
 | `MIN_KEYWORD_LEN` | 最短关键词长度 |
 | `STOPWORDS` | 停用词集合（200+ 词） |
-| `KB_INTERNAL_COLUMNS` | 内部 CSV 列定义（12 列） |
 
 ## 环境变量
 
