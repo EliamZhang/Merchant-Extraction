@@ -1,11 +1,11 @@
 """
-build_kb — 官方企业库构建
+build_knowledge_base — 官方企业库构建
 =========================
 ABR XML → 商户知识库：解析 → 过滤 → 合并 → 分类
 
 用法:
-  python scripts/build_kb.py              # 全流程
-  python scripts/build_kb.py --skip-parse # 跳过 XML 解析
+  python build_knowledge_base.py              # 全流程
+  python build_knowledge_base.py --skip-parse # 跳过 XML 解析
 """
 
 import argparse, csv, hashlib, sys, traceback, xml.etree.ElementTree as ET

@@ -9,10 +9,10 @@ from pathlib import Path
 
 # ─── 目录 ─────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent
-RAW_DIR = BASE_DIR / "raw"
+RAW_DIR = BASE_DIR / "xml_input"
 DATA_DIR = BASE_DIR / "data"
 BACKUP_DIR = BASE_DIR / "backup"
-ADD_DIR = BASE_DIR / "add"
+ADD_DIR = BASE_DIR / "manual_entries"
 
 # ─── 中间产物 ─────────────────────────────────────────
 PARSED_DIR = DATA_DIR / "parsed"           # parse.py 输出（每个 XML 一个 CSV）

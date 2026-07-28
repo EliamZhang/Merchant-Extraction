@@ -105,7 +105,7 @@ def process_keywords(internal_path: Path = INTERNAL_FILE, full_clean: bool = Fal
     for row in rows:
         kca = row.get("keyword_created_at", "").strip()
 
-        # 增量模式：只洗 keyword_created_at 不为空的（build_kb 或 merge_add 标记的新/变更记录）
+        # 增量模式：只洗 keyword_created_at 不为空的（build_knowledge_base 或 merge_manual_entries 标记的新/变更记录）
         if not full_clean and not kca:
             continue
 

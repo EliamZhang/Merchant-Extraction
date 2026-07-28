@@ -6,20 +6,20 @@
 
 ```
 Business bd/
-├── build_kb.py              # 官方企业库构建（解析+过滤+合并+分类）
+├── build_knowledge_base.py  # 官方企业库构建（解析+过滤+合并+分类）
 ├── clean_keywords.py        # 关键词清洗
-├── merge_add.py             # 手工补充合并
-├── merchant_classifier.py   # AI 分类（DeepSeek）
-├── verify_third_party_merchants.py # AI 第三方验证（DeepSeek）
+├── merge_manual_entries.py  # 手工补充合并
+├── classify_merchants.py    # AI 分类（DeepSeek）
+├── verify_merchants.py      # AI 第三方验证（DeepSeek）
 ├── config.py                # 全局配置
 ├── utils.py                 # 通用工具
-├── raw/                    # 输入：ABR XML 报文
-├── add/                    # 输入：手工补充 CSV
-├── data/                   # 中间产物（parsed/, filtered.csv, kb_internal.csv）
-├── cache/                  # API 调用缓存
-├── output/                 # 验证输出
-├── tests/                  # 测试
-└── backup/                 # 历史脚本存档
+├── xml_input/               # 输入：ABR XML 报文
+├── manual_entries/          # 输入：手工补充 CSV
+├── data/                    # 中间产物（parsed/, filtered.csv, kb_internal.csv）
+├── cache/                   # API 调用缓存
+├── output/                  # 验证输出
+├── tests/                   # 测试
+└── backup/                  # 历史脚本存档
 ```
 
 ## 两个主要工作流
@@ -29,24 +29,24 @@ Business bd/
 从澳大利亚商业登记 (ABR) 的 XML 报文中提取商户信息，经过过滤、合并、清洗和分类，生成结构化的商户知识库。
 
 ```
-raw/*.xml  →  build_kb  →  clean_keywords  →  export  →  merchant_kb.csv
-              (解析+过滤     (关键词清洗)       (5列投影
-               合并+分类)                       排除GONE)
+xml_input/*.xml  →  build_knowledge_base  →  clean_keywords  →  export  →  merchant_kb.csv
+                    (解析+过滤               (关键词清洗)       (5列投影
+                     合并+分类)                                 排除GONE)
 ```
 
 | 步骤 | 脚本 | 功能 |
 |------|------|------|
-| 1 | `build_kb.py` | 解析 XML → 过滤 → 增量合并 → 规则分类，输出 `data/kb_internal.csv` |
+| 1 | `build_knowledge_base.py` | 解析 XML → 过滤 → 增量合并 → 规则分类，输出 `data/kb_internal.csv` |
 | 2 | `clean_keywords.py` | 清洗 keywords：移除过短词、停用词、去重 |
 | 3 | `export_final()` | `kb_internal.csv` → `merchant_kb.csv`（5 列，排除 GONE） |
-| — | `merge_add.py` | 独立通道：将 `add/*.csv` 手工合并到知识库 |
+| — | `merge_manual_entries.py` | 独立通道：将 `manual_entries/*.csv` 手工合并到知识库 |
 
 ```bash
-python build_kb.py                # 增量模式
-python build_kb.py --skip-parse   # 跳过 XML 解析
+python build_knowledge_base.py                # 增量模式
+python build_knowledge_base.py --skip-parse   # 跳过 XML 解析
 python clean_keywords.py --input data/kb_internal.csv        # 增量清洗
 python clean_keywords.py --input data/kb_internal.csv --full # 全量清洗
-python -c "from build_kb import export_final; export_final()"  # 导出
+python -c "from build_knowledge_base import export_final; export_final()"  # 导出
 ```
 
 ### 工作流 B：AI 处理
@@ -55,19 +55,19 @@ python -c "from build_kb import export_final; export_final()"  # 导出
 
 | 脚本 | 功能 |
 |------|------|
-| `merchant_classifier.py` | 用 DeepSeek 对 `merchant_kb.csv` 中的商户进行 AI 分类 |
-| `verify_third_party_merchants.py` | 验证银行交易对手方是否为真实商户，提取标准化名称和关键词 |
+| `classify_merchants.py` | 用 DeepSeek 对 `merchant_kb.csv` 中的商户进行 AI 分类 |
+| `verify_merchants.py` | 验证银行交易对手方是否为真实商户，提取标准化名称和关键词 |
 
 ## 各脚本用法
 
-### build_kb — 官方企业库构建
+### build_knowledge_base — 官方企业库构建
 
 ```bash
-python build_kb.py              # 全流程（解析→过滤→合并→分类）
-python build_kb.py --skip-parse # 跳过 XML 解析
+python build_knowledge_base.py              # 全流程（解析→过滤→合并→分类）
+python build_knowledge_base.py --skip-parse # 跳过 XML 解析
 ```
 
-一条命令完成：解析 `raw/*.xml` → 过滤（PRV/PUB，排除 2023 年前注销）→ 增量合并 → 规则分类（24 个行业类别），输出 `data/kb_internal.csv`。后续继续执行清洗和导出。
+一条命令完成：解析 `xml_input/*.xml` → 过滤（PRV/PUB，排除 2023 年前注销）→ 增量合并 → 规则分类（24 个行业类别），输出 `data/kb_internal.csv`。后续继续执行清洗和导出。
 
 ### clean_keywords — 关键词清洗
 
@@ -82,29 +82,29 @@ python clean_keywords.py --input data/myfile.csv --report cleaning_report.csv
 2. 单个 token 且命中停用词（城市名、商业通用词、方位词等）→ 移除
 3. 大小写去重
 
-### merge_add — 手工补充合并
+### merge_manual_entries — 手工补充合并
 
 ```bash
-python merge_add.py --add-dir add/ --target merchant_kb.csv
+python merge_manual_entries.py --add-dir manual_entries/ --target merchant_kb.csv
 ```
 
-将 `add/` 目录下的手工维护 CSV 合并到目标知识库：
+将 `manual_entries/` 目录下的手工维护 CSV 合并到目标知识库：
 - 按商户名称（大小写和空格不敏感）匹配
 - 已有商户：填补空白字段（keywords、link、category）
 - 新商户：插入到文件顶部
 
 > 合并后建议跑一次清洗：`python clean_keywords.py --input merchant_kb.csv`
 
-### merchant_classifier — AI 分类
+### classify_merchants — AI 分类
 
 ```bash
-python merchant_classifier.py \
+python classify_merchants.py \
   --api-key "$DEEPSEEK_API_KEY" \
   --merchant-kb merchant_kb.csv \
   --cache cache/merchant_category_cache.json
 
 # 常用选项
-python merchant_classifier.py \
+python classify_merchants.py \
   --api-key "$DEEPSEEK_API_KEY" \
   --batch-size 50 \           # 每批商户数（默认 50）
   --row-limit 100 \           # 只处理前 N 行（测试用）
@@ -116,13 +116,13 @@ python merchant_classifier.py \
 
 调用 DeepSeek API 对 `merchant_kb.csv` 中 `category` 为空的商户进行分类。支持缓存（避免重复调用）和断点续传（`atexit` 保存）。
 
-### verify_third_party_merchants — AI 第三方验证
+### verify_merchants — AI 第三方验证
 
 ```bash
-python verify_third_party_merchants.py --api-key "$DEEPSEEK_API_KEY"
+python verify_merchants.py --api-key "$DEEPSEEK_API_KEY"
 
 # 常用选项
-python verify_third_party_merchants.py \
+python verify_merchants.py \
   --api-key "$DEEPSEEK_API_KEY" \
   --input sample.csv \        # 输入文件（默认 sample.csv）
   --output output/verified.csv \

@@ -20,12 +20,12 @@ merchant_kb_cleaned.csv
 merchant_kb_cleaning_report.csv
 
 # ── 原始报文（太大，不入库） ──
-raw/*.xml
+xml_input/*.xml
 
 # ── 备份（旧文件存档） ──
 backup/
 docs/
-add/
+manual_entries/
 tests/
 # ── IDE / Editor ──
 .vscode/

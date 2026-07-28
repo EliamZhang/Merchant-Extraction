@@ -1,7 +1,7 @@
 """Merge manually supplied merchant CSV files into the final knowledge base.
 
 Usage:
-  python scripts/merge_add.py --add-dir add/ --target merchant_kb.csv
+  python merge_manual_entries.py --add-dir manual_entries/ --target merchant_kb.csv
 """
 
 import argparse
