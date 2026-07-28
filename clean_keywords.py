@@ -49,20 +49,6 @@ def is_known_short_keyword(keyword: str) -> bool:
     return keyword.upper() in KNOWN_ABBREVIATIONS
 
 
-def strip_noise_tokens(keyword: str) -> tuple[str, list[str]]:
-    """Remove transaction/channel prefixes from one keyword."""
-    tokens = TOKEN_RE.findall(keyword or "")
-    if not tokens:
-        return "", []
-
-    removed: list[str] = []
-
-    while tokens and tokens[0].upper() in PAYMENT_PREFIX_WORDS:
-        removed.append(tokens.pop(0))
-
-    return " ".join(tokens), removed
-
-
 def has_enough_distinctive_tokens(keyword: str) -> bool:
     tokens = keyword_tokens(keyword)
     distinctive = [
@@ -84,15 +70,6 @@ def clean_keywords(keywords_raw: str, merchant_name: str) -> tuple[str, list[str
     seen: set[str] = set()
 
     for keyword in split_keywords(keywords_raw):
-        cleaned_keyword, stripped_tokens = strip_noise_tokens(keyword)
-        if not cleaned_keyword:
-            removed.append(f"[NOISE] {keyword}")
-            continue
-
-        if stripped_tokens:
-            removed.append(f"[TRIM] {keyword} -> {cleaned_keyword}")
-
-        keyword = cleaned_keyword
         keyword_upper = keyword.upper()
         keyword_key = keyword_identity(keyword)
         is_single_token = " " not in keyword
@@ -233,10 +210,8 @@ def process_keywords(
                                 elif item.startswith("[DUP]"):
                                     stats["removed_dup"] += 1
                                     stats["total_removed"] += 1
-                                elif item.startswith("[TRIM]"):
-                                    stats["trimmed_noise"] += 1
-                                elif item.startswith("[NOISE]") or item.startswith("[GENERIC]"):
-                                    stats["removed_noise"] += 1
+                                elif item.startswith("[GENERIC]"):
+                                    stats["removed_generic"] += 1
                                     stats["total_removed"] += 1
                             if report_path:
                                 push_report_detail(
@@ -254,7 +229,7 @@ def process_keywords(
             temporary_path.unlink(missing_ok=True)
         raise
 
-    print(f"[clean_keywords] {mode} | rows: {stats['total_rows']:,} processed: {stats['rows_processed']:,} changed: {stats['rows_changed']:,} | removed: {stats['total_removed']:,} (len:{stats['removed_len']:,} stop:{stats['removed_stopword']:,} dup:{stats['removed_dup']:,} noise:{stats['removed_noise']:,} trim:{stats['trimmed_noise']:,})")
+    print(f"[clean_keywords] {mode} | rows: {stats['total_rows']:,} processed: {stats['rows_processed']:,} changed: {stats['rows_changed']:,} | removed: {stats['total_removed']:,} (len:{stats['removed_len']:,} stop:{stats['removed_stopword']:,} dup:{stats['removed_dup']:,} generic:{stats['removed_generic']:,})")
 
     if report_path:
         write_report(report_path, report_heap)
