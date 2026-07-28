@@ -179,6 +179,20 @@ def find_existing_owner(
     return ""
 
 
+def _progress_line(stats: Counter, suffix: str = "") -> str:
+    scanned = stats.get("xml_records", 0)
+    kept = stats.get("kept_entities", 0)
+    matched = stats.get("matched_existing_entities", 0)
+    new = stats.get("new_source_entities", 0)
+    errors = stats.get("errors", 0) + stats.get("parse_errors", 0)
+    parts = [f"scanned={scanned:,}", f"kept={kept:,}", f"matched={matched:,}", f"new={new:,}"]
+    if errors:
+        parts.append(f"errors={errors:,}")
+    if suffix:
+        parts.append(suffix)
+    return "  " + "  ".join(parts)
+
+
 def collect_xml_entities(
     raw_dir: Path,
     existing_names: set[str],
@@ -189,13 +203,13 @@ def collect_xml_entities(
     stats: Counter = Counter()
 
     xml_files = sorted(raw_dir.glob("*.xml"))
-    stats["xml_files"] = len(xml_files)
     if not xml_files:
         print(f"[xml] No XML files found in {raw_dir}")
         return additions_by_owner, new_entities, stats
 
+    print(f"[xml] {len(xml_files)} file(s) to scan")
     for xml_path in xml_files:
-        print(f"[xml] Reading {xml_path.name} ({xml_path.stat().st_size / (1024**2):.0f} MB)")
+        print(f"  {xml_path.name}")
         try:
             context = ET.iterparse(str(xml_path), events=("start", "end"))
             _, root = next(context)
@@ -232,15 +246,17 @@ def collect_xml_entities(
                     stats["errors"] += 1
                     if stats["errors"] <= 5:
                         last_line = traceback.format_exc().strip().splitlines()[-1]
-                        print(f"  [WARN] {last_line}")
+                        print(f"    [WARN] {last_line}")
 
                 elem.clear()
                 if stats["xml_records"] % 200000 == 0:
                     root.clear()
-                    print(f"  {stats['xml_records']:,} XML records scanned...")
+                    print(_progress_line(stats, f"file {xml_path.name}"))
+
         except ET.ParseError as exc:
             stats["parse_errors"] += 1
-            print(f"[xml] Parse error in {xml_path.name}: {exc}")
+            print(f"    [ERR] Parse error: {exc}")
+        print(_progress_line(stats, f"done {xml_path.name}"))
 
     return additions_by_owner, new_entities, stats
 
@@ -327,23 +343,31 @@ def build_knowledge_base(raw_dir: Path = RAW_DIR, target_path: Path = FINAL_OUTP
         existing_names=existing_names,
         keyword_owner=keyword_owner,
     )
-    if stats["xml_files"] == 0:
+    if stats.get("xml_records", 0) == 0:
+        print("[kb] No XML records processed")
         return stats
 
     write_stats = write_merged_kb(target_path, additions_by_owner, new_entities, timestamp)
     stats.update(write_stats)
 
-    print("\n[kb] Done")
-    print(f"  XML files:                 {stats['xml_files']:>10,}")
-    print(f"  XML records scanned:       {stats['xml_records']:>10,}")
-    print(f"  Kept entities:             {stats['kept_entities']:>10,}")
-    print(f"  Matched existing entities: {stats['matched_existing_entities']:>10,}")
-    print(f"  Existing rows updated:     {stats['updated_existing_rows']:>10,}")
-    print(f"  New rows inserted:         {stats['inserted_new_rows']:>10,}")
-    print(f"  Parse/extract errors:      {(stats['parse_errors'] + stats['errors']):>10,}")
-    for key, value in stats.items():
-        if key.startswith("filtered:"):
-            print(f"  Filtered {key.removeprefix('filtered:')}: {value:>10,}")
+    total_filtered = sum(v for k, v in stats.items() if k.startswith("filtered:"))
+    parse_errors = stats.get("parse_errors", 0) + stats.get("errors", 0)
+
+    print(f"\n[kb] Summary")
+    print(f"  XML records:         {stats.get('xml_records', 0):>10,}")
+    print(f"  Kept / filtered:     {stats.get('kept_entities', 0):>10,}  / {total_filtered:,}")
+    print(f"  ── matched existing: {stats.get('matched_existing_entities', 0):>10,}")
+    print(f"  ── new entities:     {stats.get('new_source_entities', 0):>10,}")
+    print(f"  Knowledge base:")
+    print(f"  ── rows updated:     {stats.get('updated_existing_rows', 0):>10,}")
+    print(f"  ── rows inserted:    {stats.get('inserted_new_rows', 0):>10,}")
+    if parse_errors:
+        print(f"  Errors:              {parse_errors:>10,}")
+    if total_filtered:
+        print(f"  Filtered by:")
+        for key in sorted(stats):
+            if key.startswith("filtered:"):
+                print(f"    {key.removeprefix('filtered:'):<24} {stats[key]:>10,}")
 
     return stats
 
