@@ -14,7 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from common.config import ADD_DIR, FINAL_OUTPUT
+from config import ADD_DIR, FINAL_OUTPUT
 
 
 TARGET_COLUMNS = [

@@ -21,7 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from common.config import (
+from config import (
     INTERNAL_FILE, KB_INTERNAL_COLUMNS,
     MIN_KEYWORD_LEN, STOPWORDS,
 )

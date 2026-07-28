@@ -33,7 +33,7 @@ echo "  Target: $TARGET"
 echo "  Start:  $(date '+%Y-%m-%d %H:%M:%S')"
 echo "======================================================================"
 
-python scripts/merge_add.py --add-dir "$ADD_DIR" --target "$TARGET"
+python merge_add.py --add-dir "$ADD_DIR" --target "$TARGET"
 
 echo ""
 echo "======================================================================"

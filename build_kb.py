@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from common.config import (
+from config import (
     RAW_DIR, PARSED_DIR, FILTERED_FILE, MATCH_KEY_LENGTH,
     KEEP_ENTITY_TYPES, CANCEL_CUTOFF_DATE, KB_INTERNAL_COLUMNS,
     INTERNAL_FILE, CHANGELOG_FILE, STATUS_GONE,

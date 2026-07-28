@@ -45,7 +45,7 @@ echo ""
 echo "----------------------------------------------------------------------"
 echo "[$(date '+%H:%M:%S')] Step 1/3: Build KB (parse + filter + merge + categorize)"
 echo "----------------------------------------------------------------------"
-python scripts/build_kb.py $SKIP_FLAG
+python build_kb.py $SKIP_FLAG
 
 # ── Step 2: Clean Keywords ────────────────────────────────────
 echo ""
@@ -53,11 +53,11 @@ echo "----------------------------------------------------------------------"
 if $FULL_CLEAN; then
     echo "[$(date '+%H:%M:%S')] Step 2/3: Clean Keywords (FULL)"
     echo "----------------------------------------------------------------------"
-    python scripts/clean_keywords.py --input data/kb_internal.csv --full
+    python clean_keywords.py --input data/kb_internal.csv --full
 else
     echo "[$(date '+%H:%M:%S')] Step 2/3: Clean Keywords (INCREMENTAL)"
     echo "----------------------------------------------------------------------"
-    python scripts/clean_keywords.py --input data/kb_internal.csv
+    python clean_keywords.py --input data/kb_internal.csv
 fi
 
 # ── Step 3: Export (kb_internal.csv → merchant_kb.csv) ─────────
@@ -65,7 +65,7 @@ echo ""
 echo "----------------------------------------------------------------------"
 echo "[$(date '+%H:%M:%S')] Step 3/3: Export → merchant_kb.csv"
 echo "----------------------------------------------------------------------"
-python -c "from scripts.build_kb import export_final; export_final()"
+python -c "from build_kb import export_final; export_final()"
 
 # ── Done ───────────────────────────────────────────────────────
 echo ""

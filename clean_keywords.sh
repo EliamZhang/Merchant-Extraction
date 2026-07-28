@@ -47,7 +47,7 @@ echo "  Target: merchant_kb.csv"
 echo "  Start: $(date '+%Y-%m-%d %H:%M:%S')"
 echo "======================================================================"
 
-python scripts/clean_keywords.py \
+python clean_keywords.py \
     --input merchant_kb.csv \
     $FULL_FLAG \
     $REPORT_FLAG
