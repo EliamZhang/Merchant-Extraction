@@ -334,9 +334,8 @@ def write_merged_kb(
 def build_knowledge_base(raw_dir: Path = RAW_DIR, target_path: Path = FINAL_OUTPUT) -> Counter:
     timestamp = now_utc()
 
-    print(f"[kb] Target: {target_path}")
     existing_names, keyword_owner, existing_count = load_existing_index(target_path)
-    print(f"[kb] Existing rows: {existing_count:,}")
+    print(f"[kb] target: {target_path} | existing rows: {existing_count:,}")
 
     additions_by_owner, new_entities, stats = collect_xml_entities(
         raw_dir=raw_dir,
@@ -353,21 +352,26 @@ def build_knowledge_base(raw_dir: Path = RAW_DIR, target_path: Path = FINAL_OUTP
     total_filtered = sum(v for k, v in stats.items() if k.startswith("filtered:"))
     parse_errors = stats.get("parse_errors", 0) + stats.get("errors", 0)
 
-    print(f"\n[kb] Summary")
-    print(f"  XML records:         {stats.get('xml_records', 0):>10,}")
-    print(f"  Kept / filtered:     {stats.get('kept_entities', 0):>10,}  / {total_filtered:,}")
-    print(f"  ── matched existing: {stats.get('matched_existing_entities', 0):>10,}")
-    print(f"  ── new entities:     {stats.get('new_source_entities', 0):>10,}")
-    print(f"  Knowledge base:")
-    print(f"  ── rows updated:     {stats.get('updated_existing_rows', 0):>10,}")
-    print(f"  ── rows inserted:    {stats.get('inserted_new_rows', 0):>10,}")
+    parts = [
+        f"xml: {stats.get('xml_records', 0):,}",
+        f"kept: {stats.get('kept_entities', 0):,}",
+        f"filtered: {total_filtered:,}",
+        f"matched: {stats.get('matched_existing_entities', 0):,}",
+        f"new: {stats.get('new_source_entities', 0):,}",
+        f"kb_updated: {stats.get('updated_existing_rows', 0):,}",
+        f"kb_inserted: {stats.get('inserted_new_rows', 0):,}",
+    ]
     if parse_errors:
-        print(f"  Errors:              {parse_errors:>10,}")
+        parts.append(f"errors: {parse_errors:,}")
+    print(f"[kb] {' | '.join(parts)}")
+
     if total_filtered:
-        print(f"  Filtered by:")
+        reasons = []
         for key in sorted(stats):
             if key.startswith("filtered:"):
-                print(f"    {key.removeprefix('filtered:'):<24} {stats[key]:>10,}")
+                reason = key.removeprefix("filtered:")
+                reasons.append(f"{reason}: {stats[key]:,}")
+        print(f"[kb] filter reasons: {' | '.join(reasons)}")
 
     return stats
 

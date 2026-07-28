@@ -158,7 +158,7 @@ def write_report(report_path: Path, report_heap: list[tuple[int, int, dict[str, 
         writer = csv.DictWriter(target, fieldnames=["merchant_name", "removed_count", "removed"])
         writer.writeheader()
         writer.writerows(details)
-    print(f"  Report:          {report_path}")
+    print(f"  report: {report_path}")
 
 
 def process_keywords(
@@ -182,8 +182,6 @@ def process_keywords(
         return None
 
     mode = "FULL" if full_clean or not changed_since else f"CHANGED SINCE {changed_since}"
-    print(f"[clean_keywords] Input: {input_path}")
-    print(f"[clean_keywords] Mode: {mode}")
 
     stats: Counter = Counter()
     report_heap: list[tuple[int, int, dict[str, str]]] = []
@@ -253,17 +251,7 @@ def process_keywords(
             temporary_path.unlink(missing_ok=True)
         raise
 
-    print(f"\n[clean_keywords] {'=' * 50}")
-    print(f"  Mode:             {mode}")
-    print(f"  Total rows:       {stats['total_rows']:>10,}")
-    print(f"  Rows processed:   {stats['rows_processed']:>10,}")
-    print(f"  Rows changed:     {stats['rows_changed']:>10,}")
-    print(f"  Keywords removed: {stats['total_removed']:>10,}")
-    print(f"    - Length:       {stats['removed_len']:>10,}")
-    print(f"    - Stopword:     {stats['removed_stopword']:>10,}")
-    print(f"    - Dedup:        {stats['removed_dup']:>10,}")
-    print(f"    - Noise:        {stats['removed_noise']:>10,}")
-    print(f"    - Trimmed:      {stats['trimmed_noise']:>10,}")
+    print(f"[clean_keywords] {mode} | rows: {stats['total_rows']:,} processed: {stats['rows_processed']:,} changed: {stats['rows_changed']:,} | removed: {stats['total_removed']:,} (len:{stats['removed_len']:,} stop:{stats['removed_stopword']:,} dup:{stats['removed_dup']:,} noise:{stats['removed_noise']:,} trim:{stats['trimmed_noise']:,})")
 
     if report_path:
         write_report(report_path, report_heap)
