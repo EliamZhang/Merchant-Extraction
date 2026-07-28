@@ -1,10 +1,20 @@
-"""Merge manually supplied merchant CSV files into the final knowledge base."""
+"""Merge manually supplied merchant CSV files into the final knowledge base.
 
+Usage:
+  python scripts/merge_add.py --add-dir add/ --target merchant_kb.csv
+"""
+
+import argparse
 import csv
 import os
 import re
+import sys
 import tempfile
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from config import ADD_DIR, FINAL_OUTPUT
 
 
 TARGET_COLUMNS = [
@@ -130,3 +140,27 @@ def merge_add_files(add_dir: Path, target_path: Path) -> dict[str, int]:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
         raise
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Merge manually supplied merchant CSV files into the knowledge base"
+    )
+    parser.add_argument("--add-dir", type=Path, default=ADD_DIR,
+                        help="Directory containing source CSV files (default from config)")
+    parser.add_argument("--target", type=Path, default=FINAL_OUTPUT,
+                        help="Target merchant_kb.csv to merge into (default from config)")
+    args = parser.parse_args()
+
+    stats = merge_add_files(args.add_dir, args.target)
+    print(
+        f"[merge-add] "
+        f"Files: {stats['files']:,}  |  "
+        f"Source rows: {stats['source_rows']:,}  |  "
+        f"Updated: {stats['updated_rows']:,}  |  "
+        f"Inserted: {stats['inserted_rows']:,}"
+    )
+
+
+if __name__ == "__main__":
+    main()

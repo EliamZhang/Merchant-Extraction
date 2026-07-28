@@ -16,7 +16,7 @@ RETRY_DELAY_SECONDS=600  # 10 minutes
 if [ $# -eq 0 ]; then
     echo "Usage: bash run_with_retry.sh [--retry-delay N] <python_script> [args...]"
     echo "  --retry-delay N  wait N seconds between retries (default 600)"
-    echo "  python_script: verify_third_party_merchants.py or merchant_classifier.py"
+    echo "  python_script: scripts/verify_third_party_merchants.py or scripts/merchant_classifier.py"
     exit 1
 fi
 

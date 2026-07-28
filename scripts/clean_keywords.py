@@ -92,7 +92,9 @@ def process_keywords(internal_path: Path = INTERNAL_FILE, full_clean: bool = Fal
 
     print(f"[clean_keywords] Loading {internal_path}...")
     with open(internal_path, "r", encoding="utf-8") as f:
-        rows = list(csv.DictReader(f))
+        reader = csv.DictReader(f)
+        input_columns = reader.fieldnames
+        rows = list(reader)
 
     mode = "FULL" if full_clean else "INCREMENTAL"
     print(f"[clean_keywords] Mode: {mode}  |  Total rows: {len(rows):,}")
@@ -141,7 +143,7 @@ def process_keywords(internal_path: Path = INTERNAL_FILE, full_clean: bool = Fal
     # -- 写回 --
     print(f"[clean_keywords] Writing back to {internal_path}...")
     with open(internal_path, "w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=KB_INTERNAL_COLUMNS, extrasaction='ignore')
+        writer = csv.DictWriter(f, fieldnames=input_columns, extrasaction='ignore')
         writer.writeheader()
         writer.writerows(rows)
 
