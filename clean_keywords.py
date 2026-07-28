@@ -74,7 +74,7 @@ def has_enough_distinctive_tokens(keyword: str) -> bool:
     return len(distinctive) >= MIN_DISTINCTIVE_KEYWORD_TOKENS
 
 
-def clean_keywords(keywords_raw: str, merchant_name: str) -> tuple[str, list[str], list[str]]:
+def clean_keywords(keywords_raw: str, merchant_name: str, cross_index: Counter | None = None) -> tuple[str, list[str], list[str]]:
     """Return (cleaned keywords string, removed detail list, kept keyword list)."""
     if not keywords_raw or not keywords_raw.strip():
         return "", [], []
@@ -109,6 +109,10 @@ def clean_keywords(keywords_raw: str, merchant_name: str) -> tuple[str, list[str
             removed.append(f"[GENERIC] {keyword}")
             continue
 
+        if cross_index is not None and cross_index.get(keyword_key, 0) > 1:
+            removed.append(f"[CROSS] {keyword}")
+            continue
+
         if keyword_key in seen:
             removed.append(f"[DUP] {keyword}")
             continue
@@ -128,6 +132,27 @@ def should_process_row(row: dict[str, str], full_clean: bool, changed_since: str
     if full_clean or not changed_since:
         return True
     return row.get("keyword_created_at", "").strip() >= changed_since
+
+
+def build_cross_merchant_index(
+    input_path: Path,
+    full_clean: bool = True,
+    changed_since: str = "",
+) -> Counter:
+    """Count how many distinct merchants each cleaned+normalized keyword appears in."""
+    index: Counter = Counter()
+    with input_path.open("r", encoding="utf-8-sig", newline="") as source:
+        for row in csv.DictReader(source):
+            if not should_process_row(row, full_clean=full_clean, changed_since=changed_since):
+                continue
+            seen: set[str] = set()
+            for keyword in split_keywords(row.get("keywords", "")):
+                cleaned, _ = strip_noise_tokens(keyword)
+                key = keyword_identity(cleaned)
+                if key and key not in seen:
+                    seen.add(key)
+                    index[key] += 1
+    return index
 
 
 def push_report_detail(
@@ -183,6 +208,10 @@ def process_keywords(
 
     mode = "FULL" if full_clean or not changed_since else f"CHANGED SINCE {changed_since}"
 
+    cross_index = build_cross_merchant_index(input_path, full_clean=full_clean, changed_since=changed_since)
+    cross_kw_count = sum(1 for v in cross_index.values() if v > 1)
+    print(f"[clean_keywords] cross-merchant keywords: {cross_kw_count:,}")
+
     stats: Counter = Counter()
     report_heap: list[tuple[int, int, dict[str, str]]] = []
     temporary_path: Path | None = None
@@ -210,7 +239,7 @@ def process_keywords(
                         keywords_raw = row.get("keywords", "")
                         merchant_name = row.get("merchant_name", "")
                         original_count = len(split_keywords(keywords_raw))
-                        clean_str, removed, kept = clean_keywords(keywords_raw, merchant_name)
+                        clean_str, removed, kept = clean_keywords(keywords_raw, merchant_name, cross_index)
 
                         if clean_str != keywords_raw:
                             row["keywords"] = clean_str
@@ -235,6 +264,9 @@ def process_keywords(
                                 elif item.startswith("[NOISE]") or item.startswith("[GENERIC]"):
                                     stats["removed_noise"] += 1
                                     stats["total_removed"] += 1
+                                elif item.startswith("[CROSS]"):
+                                    stats["removed_cross"] += 1
+                                    stats["total_removed"] += 1
                             if report_path:
                                 push_report_detail(
                                     report_heap,
@@ -251,7 +283,7 @@ def process_keywords(
             temporary_path.unlink(missing_ok=True)
         raise
 
-    print(f"[clean_keywords] {mode} | rows: {stats['total_rows']:,} processed: {stats['rows_processed']:,} changed: {stats['rows_changed']:,} | removed: {stats['total_removed']:,} (len:{stats['removed_len']:,} stop:{stats['removed_stopword']:,} dup:{stats['removed_dup']:,} noise:{stats['removed_noise']:,} trim:{stats['trimmed_noise']:,})")
+    print(f"[clean_keywords] {mode} | rows: {stats['total_rows']:,} processed: {stats['rows_processed']:,} changed: {stats['rows_changed']:,} | removed: {stats['total_removed']:,} (len:{stats['removed_len']:,} stop:{stats['removed_stopword']:,} dup:{stats['removed_dup']:,} noise:{stats['removed_noise']:,} cross:{stats['removed_cross']:,} trim:{stats['trimmed_noise']:,})")
 
     if report_path:
         write_report(report_path, report_heap)
