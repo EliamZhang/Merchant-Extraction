@@ -1980,7 +1980,7 @@ def classify_merchant(name, keywords, link, original_category):
     if not scores:
         if original_category:
             return original_category
-        return 'Information'
+        return ''
 
     top = scores.most_common()
     best_cat, best_score = top[0]
