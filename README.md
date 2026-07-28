@@ -13,10 +13,6 @@ Business bd/
 ├── verify_third_party_merchants.py # AI 第三方验证（DeepSeek）
 ├── config.py                # 全局配置
 ├── utils.py                 # 通用工具
-├── xml2csv.sh               # 官方企业库合并（ABR XML → KB）
-├── merge_add.sh             # 手工补充合并
-├── run_full_pipeline.sh     # AI 企业库合并（分类→验证→分类）
-├── run_with_retry.sh        # 失败自动重试包装器
 ├── raw/                    # 输入：ABR XML 报文
 ├── add/                    # 输入：手工补充 CSV
 ├── data/                   # 中间产物（parsed/, filtered.csv, kb_internal.csv）
@@ -45,12 +41,12 @@ raw/*.xml  →  build_kb  →  clean_keywords  →  export  →  merchant_kb.csv
 | 3 | `export_final()` | `kb_internal.csv` → `merchant_kb.csv`（5 列，排除 GONE） |
 | — | `merge_add.py` | 独立通道：将 `add/*.csv` 手工合并到知识库 |
 
-**一键执行：**
-
 ```bash
-bash xml2csv.sh              # 增量模式（日常更新）
-bash xml2csv.sh --full       # 全量关键词清洗
-bash xml2csv.sh --skip-parse # 跳过 XML 解析
+python build_kb.py                # 增量模式
+python build_kb.py --skip-parse   # 跳过 XML 解析
+python clean_keywords.py --input data/kb_internal.csv        # 增量清洗
+python clean_keywords.py --input data/kb_internal.csv --full # 全量清洗
+python -c "from build_kb import export_final; export_final()"  # 导出
 ```
 
 ### 工作流 B：AI 处理
@@ -62,30 +58,6 @@ bash xml2csv.sh --skip-parse # 跳过 XML 解析
 | `merchant_classifier.py` | 用 DeepSeek 对 `merchant_kb.csv` 中的商户进行 AI 分类 |
 | `verify_third_party_merchants.py` | 验证银行交易对手方是否为真实商户，提取标准化名称和关键词 |
 
-## 三个操作入口
-
-所有操作都通过根目录的 Shell 脚本一键执行：
-
-| 脚本 | 功能 | 用法 |
-|------|------|------|
-| `xml2csv.sh` | 官方企业库合并 | `bash xml2csv.sh` |
-| `merge_add.sh` | 手工补充合并 | `bash merge_add.sh` |
-| `run_full_pipeline.sh` | AI 企业库合并 | `bash run_full_pipeline.sh` |
-
-```bash
-# 官方企业库：ABR XML → 商户知识库
-bash xml2csv.sh              # 增量
-bash xml2csv.sh --full       # 全量清洗
-bash xml2csv.sh --skip-parse # 跳过 XML 解析
-
-# 手工补充：将 add/*.csv 合并到知识库
-bash merge_add.sh
-
-# AI 企业库：分类 → 第三方验证 → 分类
-export DEEPSEEK_API_KEY="sk-..."
-bash run_full_pipeline.sh
-```
-
 ## 各脚本用法
 
 ### build_kb — 官方企业库构建
@@ -95,7 +67,7 @@ python build_kb.py              # 全流程（解析→过滤→合并→分类�
 python build_kb.py --skip-parse # 跳过 XML 解析
 ```
 
-一条命令完成：解析 `raw/*.xml` → 过滤（PRV/PUB，排除 2023 年前注销）→ 增量合并 → 规则分类（24 个行业类别），输出 `data/kb_internal.csv`。后续由 `xml2csv.sh` 统一衔接清洗和导出。
+一条命令完成：解析 `raw/*.xml` → 过滤（PRV/PUB，排除 2023 年前注销）→ 增量合并 → 规则分类（24 个行业类别），输出 `data/kb_internal.csv`。后续继续执行清洗和导出。
 
 ### clean_keywords — 关键词清洗
 
@@ -113,11 +85,6 @@ python clean_keywords.py --input data/myfile.csv --report cleaning_report.csv
 ### merge_add — 手工补充合并
 
 ```bash
-# 快捷方式
-bash merge_add.sh
-bash merge_add.sh --add-dir my_files/ --target my_kb.csv
-
-# 或者直接调用 Python 脚本
 python merge_add.py --add-dir add/ --target merchant_kb.csv
 ```
 
