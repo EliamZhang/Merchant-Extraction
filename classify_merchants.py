@@ -27,7 +27,7 @@ from utils import (
 DEFAULT_MERCHANT_KB = Path("merchant_kb.csv")
 DEFAULT_CACHE = Path("cache/merchant_category_cache.json")
 DEFAULT_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
-DEFAULT_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-pro")
+DEFAULT_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-flash")
 DEFAULT_THINKING_TYPE = os.environ.get("DEEPSEEK_THINKING_TYPE", "none")
 DEFAULT_REASONING_EFFORT = os.environ.get("DEEPSEEK_REASONING_EFFORT", "none")
 MERCHANT_CATEGORIES = (
