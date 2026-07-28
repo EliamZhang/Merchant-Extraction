@@ -198,15 +198,17 @@ KB_INTERNAL_COLUMNS = [
     "status_date",        # ABNStatusFromDate
     "state",              # BusinessAddress State
     "record_updated",     # recordLastUpdatedDate
-    "keyword_created_at", # 关键词最近一次生成/变更时间
+    "keyword_updated_at",  # 关键词最近一次生成/变更时间
+    "category_updated_at", # 分类最近一次更新/变更时间
     "in_kb_since",        # 首次进入 KB 的时间
 ]
 
-# 最终输出列（原始格式 5 列）
+# 最终输出列（6 列）
 FINAL_OUTPUT_COLUMNS = [
     "merchant_name",
     "keywords",
     "link",
     "category",
-    "keyword_created_at",
+    "keyword_updated_at",
+    "category_updated_at",
 ]

@@ -22,13 +22,15 @@ TARGET_COLUMNS = [
     "keywords",
     "link",
     "category",
-    "keyword_created_at",
+    "keyword_updated_at",
+    "category_updated_at",
 ]
 SUPPLEMENT_COLUMNS = [
     "keywords",
     "link",
     "category",
-    "keyword_created_at",
+    "keyword_updated_at",
+    "category_updated_at",
 ]
 
 
@@ -51,8 +53,8 @@ def load_add_rows(add_dir: Path) -> tuple[list[dict[str, str]], int]:
 
 
 def _source_value(row: dict[str, str], column: str) -> str:
-    if column == "keyword_created_at":
-        return (row.get("keyword_created_at") or row.get("keyword_updated_at") or "").strip()
+    if column == "keyword_updated_at":
+        return (row.get("keyword_updated_at") or row.get("keyword_created_at") or "").strip()
     return (row.get(column) or "").strip()
 
 

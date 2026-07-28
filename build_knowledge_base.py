@@ -303,7 +303,7 @@ def write_merged_kb(
                             row["keywords"], changed = merge_keywords(row.get("keywords", ""), additions)
                             matched_owners.add(owner)
                             if changed:
-                                row["keyword_created_at"] = timestamp
+                                row["keyword_updated_at"] = timestamp
                                 stats["updated_existing_rows"] += 1
                             else:
                                 stats["existing_rows_already_current"] += 1
@@ -319,7 +319,8 @@ def write_merged_kb(
                     "keywords": KEYWORD_SEPARATOR.join(keywords.values()),
                     "link": "",
                     "category": "",
-                    "keyword_created_at": timestamp,
+                    "keyword_updated_at": timestamp,
+                    "category_updated_at": "",
                 })
                 stats["inserted_new_rows"] += 1
 

@@ -104,7 +104,7 @@ def clean_keywords(keywords_raw: str, merchant_name: str) -> tuple[str, list[str
 def should_process_row(row: dict[str, str], full_clean: bool, changed_since: str) -> bool:
     if full_clean or not changed_since:
         return True
-    return row.get("keyword_created_at", "").strip() >= changed_since
+    return row.get("keyword_updated_at", "").strip() >= changed_since
 
 
 def push_report_detail(
@@ -152,7 +152,7 @@ def process_keywords(
     Clean the keywords column in a CSV file.
 
     By default all rows are processed. Pass changed_since to only process rows
-    whose keyword_created_at value is greater than or equal to that timestamp.
+    whose keyword_updated_at value is greater than or equal to that timestamp.
     The now argument is kept for backward-compatible callers and is not used.
     """
     del now
@@ -244,7 +244,7 @@ def main() -> None:
     parser.add_argument(
         "--changed-since",
         default="",
-        help="Only clean rows with keyword_created_at >= this timestamp",
+        help="Only clean rows with keyword_updated_at >= this timestamp",
     )
     parser.add_argument(
         "--full",
