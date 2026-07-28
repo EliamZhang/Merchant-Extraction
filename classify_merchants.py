@@ -416,8 +416,8 @@ def classify_merchant_kb(
     only_missing: bool = True,
     row_limit: int | None = None,
     dry_run: bool = False,
-    save_every_batches: int = 10,
-    cache_save_every_batches: int = 20,
+    save_every_batches: int = 50,
+    cache_save_every_batches: int = 50,
     progress: bool = True,
     verbose: bool = False,
 ) -> dict[str, int]:
