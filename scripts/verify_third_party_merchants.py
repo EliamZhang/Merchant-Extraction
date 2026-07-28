@@ -15,7 +15,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from utils import (
+from common.utils import (
     china_timestamp_now,
     clean_output_value,
     extract_json_object,

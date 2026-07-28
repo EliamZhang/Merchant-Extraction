@@ -21,7 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from config import (
+from common.config import (
     INTERNAL_FILE, KB_INTERNAL_COLUMNS,
     MIN_KEYWORD_LEN, STOPWORDS,
 )
@@ -105,11 +105,9 @@ def process_keywords(internal_path: Path = INTERNAL_FILE, full_clean: bool = Fal
     for row in rows:
         kca = row.get("keyword_created_at", "").strip()
 
-        # 增量模式：跳过不需要清洗的记录
-        if not full_clean and kca != now:
-            # 但如果有空的 keyword_created_at 也洗（兼容首次运行遗留）
-            if kca:
-                continue
+        # 增量模式：只洗 keyword_created_at 不为空的（build_kb 或 merge_add 标记的新/变更记录）
+        if not full_clean and not kca:
+            continue
 
         keywords_raw = row.get("keywords", "")
         merchant_name = row.get("merchant_name", "")
