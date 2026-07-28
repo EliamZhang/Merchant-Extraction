@@ -47,6 +47,45 @@ STATUS_GONE = "GONE"
 
 MIN_KEYWORD_LEN = 5  # 最短关键词长度
 
+# ─── 知名缩写白名单 ───
+# 这些品牌/机构缩写虽然短于 MIN_KEYWORD_LEN，但在银行交易中高频出现，
+# 是有效的匹配关键词，豁免长度过滤。
+
+KNOWN_ABBREVIATIONS = frozenset({
+    # ── 加油站 / 能源 ──
+    "BP", "OTR",          # BP加油站, On The Run
+    # ── 零售 / 超市 ──
+    "IGA", "ALDI", "SPAR", "MYER", "IKEA",
+    # ── 快餐 / 餐饮 ──
+    "KFC", "GYG", "MCD", "HJS",   # Guzman y Gomez, McDonald's, Hungry Jack's
+    # ── 酒类零售 ──
+    "BWS",                # Beer Wine Spirits
+    # ── 户外 / 运动 ──
+    "BCF",                # Boating Camping Fishing
+    # ── 烟草 / 便利店 ──
+    "TSG",                # Tobacco Station Group
+    # ── 时尚 / 配饰 ──
+    "H&M", "ZARA", "LUSH", "STAX", "ZING",
+    # ── 电商 / 平台 ──
+    "TEMU", "ETSY",
+    # ── 交通 / 出行 ──
+    "UBER", "DIDI", "SIXT", "MYKI", "OLA",
+    # ── 保险 / 道路服务 ──
+    "NRMA", "RACV", "RACQ", "RAA", "RACT", "GIO",
+    # ── 金融 / 支付 ──
+    "ING", "HUMM",        # ING银行, humm先买后付
+    # ── 能源 / 公用事业 ──
+    "AGL",
+    # ── 政府 ──
+    "ATO",                # Australian Taxation Office
+    # ── 电信 ──
+    "TPG",
+    # ── 娱乐 / 流媒体 ──
+    "STAN", "NEDS", "HAYU",
+    # ── 药房 ──
+    "CWH",                # Chemist Warehouse
+})
+
 # ─── 完整 STOPWORDS 集合 ───
 STOPWORDS = {
     # ── 澳洲主要城市 ──

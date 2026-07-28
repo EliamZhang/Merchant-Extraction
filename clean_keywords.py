@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from config import (
     INTERNAL_FILE, KB_INTERNAL_COLUMNS,
-    MIN_KEYWORD_LEN, STOPWORDS,
+    MIN_KEYWORD_LEN, STOPWORDS, KNOWN_ABBREVIATIONS,
 )
 
 
@@ -47,8 +47,8 @@ def clean_keywords(keywords_raw: str, merchant_name: str) -> tuple[str, list[str
         kw_upper = kw.upper()
         is_single_token = " " not in kw
 
-        # 长度过滤
-        if len(kw) < MIN_KEYWORD_LEN:
+        # 长度过滤（白名单豁免）
+        if len(kw) < MIN_KEYWORD_LEN and kw_upper not in KNOWN_ABBREVIATIONS:
             removed.append(f"[LEN<{MIN_KEYWORD_LEN}] {kw}")
             continue
 
