@@ -186,11 +186,14 @@ def write_report(report_path: Path, report_heap: list[tuple[int, int, dict[str, 
     print(f"  report: {report_path}")
 
 
+DEFAULT_REPORT_PATH = FINAL_OUTPUT.parent / "output" / "clean_report.csv"
+
+
 def process_keywords(
     input_path: Path = FINAL_OUTPUT,
     full_clean: bool = True,
     now: str = "",
-    report_path: Path | None = None,
+    report_path: Path | None = DEFAULT_REPORT_PATH,
     changed_since: str = "",
 ) -> dict[str, int] | None:
     """
@@ -294,7 +297,7 @@ def process_keywords(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Clean keywords in merchant_kb.csv")
     parser.add_argument("--input", type=Path, default=FINAL_OUTPUT)
-    parser.add_argument("--report", type=Path, default=None)
+    parser.add_argument("--report", type=Path, default=DEFAULT_REPORT_PATH)
     parser.add_argument(
         "--changed-since",
         default="",
