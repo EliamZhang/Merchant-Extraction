@@ -25,6 +25,7 @@ xml_input/*.xml
 # ── 备份（旧文件存档） ──
 backup/
 docs/
+historical_kb/
 manual_entries/
 tests/
 # ── IDE / Editor ──
