@@ -1,180 +1,240 @@
 """
-Stage 4: 关键词清洗
-===================
-清洗 kb_internal.csv 中的 keywords 字段。
+Clean merchant keyword lists in merchant_kb.csv.
 
-模式:
-  - 增量（默认）：只清洗 keyword_created_at == 本次运行时间 的记录
-  - 全量（--full）：清洗全部记录
-
-清洗规则:
-  1. 长度 <= MIN_KEYWORD_LEN -> 移除
-  2. 单 token 且在 STOPWORDS 中 -> 移除
-  3. 大小写去重
+The script streams the CSV and writes through a temporary file, so it can handle
+large knowledge bases without loading every row into memory.
 """
 
+import argparse
 import csv
+import heapq
+import os
 import sys
+import tempfile
 from collections import Counter
-from datetime import datetime, timezone
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from config import (
-    INTERNAL_FILE, KB_INTERNAL_COLUMNS,
-    MIN_KEYWORD_LEN, STOPWORDS, KNOWN_ABBREVIATIONS,
+    FINAL_OUTPUT,
+    FINAL_OUTPUT_COLUMNS,
+    KNOWN_ABBREVIATIONS,
+    MIN_KEYWORD_LEN,
+    STOPWORDS,
 )
 
 
+KEYWORD_SEPARATOR = " | "
+REPORT_LIMIT = 500
+
+
+def split_keywords(keywords_raw: str) -> list[str]:
+    return [" ".join(part.split()) for part in (keywords_raw or "").split("|") if part.strip()]
+
+
+def keyword_identity(keyword: str) -> str:
+    return " ".join((keyword or "").split()).casefold()
+
+
 def clean_keywords(keywords_raw: str, merchant_name: str) -> tuple[str, list[str], list[str]]:
-    """
-    清理关键词字符串。
-    返回: (clean_str, removed_list, kept_list)
-    """
+    """Return (cleaned keywords string, removed detail list, kept keyword list)."""
     if not keywords_raw or not keywords_raw.strip():
         return "", [], []
 
-    kws = [kw.strip() for kw in keywords_raw.split(" | ")]
-    kept = []
-    removed = []
-    seen = set()
+    kept: list[str] = []
+    removed: list[str] = []
+    seen: set[str] = set()
 
-    for kw in kws:
-        if not kw:
+    for keyword in split_keywords(keywords_raw):
+        keyword_upper = keyword.upper()
+        keyword_key = keyword_identity(keyword)
+        is_single_token = " " not in keyword
+
+        if len(keyword) < MIN_KEYWORD_LEN and keyword_upper not in KNOWN_ABBREVIATIONS:
+            removed.append(f"[LEN<{MIN_KEYWORD_LEN}] {keyword}")
             continue
 
-        kw_upper = kw.upper()
-        is_single_token = " " not in kw
-
-        # 长度过滤（白名单豁免）
-        if len(kw) < MIN_KEYWORD_LEN and kw_upper not in KNOWN_ABBREVIATIONS:
-            removed.append(f"[LEN<{MIN_KEYWORD_LEN}] {kw}")
+        if is_single_token and keyword_upper in STOPWORDS:
+            removed.append(f"[STOPWORD] {keyword}")
             continue
 
-        # STOPWORDS 过滤（仅单 token）
-        if is_single_token and kw_upper in STOPWORDS:
-            removed.append(f"[STOPWORD] {kw}")
+        if keyword_key in seen:
+            removed.append(f"[DUP] {keyword}")
             continue
 
-        # 去重
-        if kw_upper in seen:
-            removed.append(f"[DUP] {kw}")
-            continue
+        seen.add(keyword_key)
+        kept.append(keyword)
 
-        seen.add(kw_upper)
-        kept.append(kw)
-
-    # 如果全部被移除，保留 merchant_name 作为兜底
     if not kept and merchant_name:
-        kept.append(merchant_name.strip())
+        fallback = " ".join(merchant_name.split())
+        if fallback:
+            kept.append(fallback)
 
-    clean_str = " | ".join(kept)
-    return clean_str, removed, kept
+    return KEYWORD_SEPARATOR.join(kept), removed, kept
 
 
-def process_keywords(internal_path: Path = INTERNAL_FILE, full_clean: bool = False,
-                     now: str = "", report_path: Path = None):
+def should_process_row(row: dict[str, str], full_clean: bool, changed_since: str) -> bool:
+    if full_clean or not changed_since:
+        return True
+    return row.get("keyword_created_at", "").strip() >= changed_since
+
+
+def push_report_detail(
+    report_heap: list[tuple[int, int, dict[str, str]]],
+    sequence: int,
+    merchant_name: str,
+    removed: list[str],
+) -> None:
+    detail = {
+        "merchant_name": merchant_name,
+        "removed_count": str(len(removed)),
+        "removed": " || ".join(removed),
+    }
+    item = (len(removed), sequence, detail)
+    if len(report_heap) < REPORT_LIMIT:
+        heapq.heappush(report_heap, item)
+    elif item[0] > report_heap[0][0]:
+        heapq.heapreplace(report_heap, item)
+
+
+def write_report(report_path: Path, report_heap: list[tuple[int, int, dict[str, str]]]) -> None:
+    if not report_heap:
+        return
+
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    details = [item[2] for item in sorted(report_heap, reverse=True)]
+    with report_path.open("w", encoding="utf-8", newline="") as target:
+        writer = csv.DictWriter(target, fieldnames=["merchant_name", "removed_count", "removed"])
+        writer.writeheader()
+        writer.writerows(details)
+    print(f"  Report:          {report_path}")
+
+
+def process_keywords(
+    input_path: Path = FINAL_OUTPUT,
+    full_clean: bool = True,
+    now: str = "",
+    report_path: Path | None = None,
+    changed_since: str = "",
+) -> dict[str, int] | None:
     """
-    清洗 kb_internal.csv 的 keywords 列。
+    Clean the keywords column in a CSV file.
 
-    full_clean=False: 只清洗 keyword_created_at == now 的记录
-    full_clean=True:  清洗全部记录
-
-    返回统计字典。
+    By default all rows are processed. Pass changed_since to only process rows
+    whose keyword_created_at value is greater than or equal to that timestamp.
+    The now argument is kept for backward-compatible callers and is not used.
     """
-    if not now:
-        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S+00:00")
+    del now
 
-    if not internal_path.exists():
-        print(f"[clean_keywords] {internal_path} not found -- nothing to clean")
+    if not input_path.exists():
+        print(f"[clean_keywords] {input_path} not found -- nothing to clean")
         return None
 
-    print(f"[clean_keywords] Loading {internal_path}...")
-    with open(internal_path, "r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        input_columns = reader.fieldnames
-        rows = list(reader)
+    mode = "FULL" if full_clean or not changed_since else f"CHANGED SINCE {changed_since}"
+    print(f"[clean_keywords] Input: {input_path}")
+    print(f"[clean_keywords] Mode: {mode}")
 
-    mode = "FULL" if full_clean else "INCREMENTAL"
-    print(f"[clean_keywords] Mode: {mode}  |  Total rows: {len(rows):,}")
+    stats: Counter = Counter()
+    report_heap: list[tuple[int, int, dict[str, str]]] = []
+    temporary_path: Path | None = None
 
-    stats = Counter()
-    cleaned_details = []  # for report
+    try:
+        with input_path.open("r", encoding="utf-8-sig", newline="") as source:
+            reader = csv.DictReader(source)
+            input_columns = reader.fieldnames or FINAL_OUTPUT_COLUMNS
 
-    for row in rows:
-        kca = row.get("keyword_created_at", "").strip()
+            with tempfile.NamedTemporaryFile(
+                "w",
+                encoding="utf-8",
+                newline="",
+                delete=False,
+                dir=input_path.parent,
+            ) as temporary:
+                temporary_path = Path(temporary.name)
+                writer = csv.DictWriter(temporary, fieldnames=input_columns, extrasaction="ignore")
+                writer.writeheader()
 
-        # 增量模式：只洗 keyword_created_at 不为空的（build_knowledge_base 或 merge_manual_entries 标记的新/变更记录）
-        if not full_clean and not kca:
-            continue
+                for row in reader:
+                    stats["total_rows"] += 1
+                    if should_process_row(row, full_clean=full_clean, changed_since=changed_since):
+                        stats["rows_processed"] += 1
+                        keywords_raw = row.get("keywords", "")
+                        merchant_name = row.get("merchant_name", "")
+                        original_count = len(split_keywords(keywords_raw))
+                        clean_str, removed, kept = clean_keywords(keywords_raw, merchant_name)
 
-        keywords_raw = row.get("keywords", "")
-        merchant_name = row.get("merchant_name", "")
+                        if clean_str != keywords_raw:
+                            row["keywords"] = clean_str
+                            stats["rows_changed"] += 1
+                            stats["total_kw_before"] += original_count
+                            stats["total_kw_after"] += len(kept)
 
-        original_count = len([k for k in keywords_raw.split(" | ") if k.strip()])
-        clean_str, removed, kept = clean_keywords(keywords_raw, merchant_name)
+                        if removed:
+                            stats["rows_with_removed_keywords"] += 1
+                            stats["total_removed"] += len(removed)
+                            for item in removed:
+                                if item.startswith("[LEN"):
+                                    stats["removed_len"] += 1
+                                elif item.startswith("[STOPWORD]"):
+                                    stats["removed_stopword"] += 1
+                                elif item.startswith("[DUP]"):
+                                    stats["removed_dup"] += 1
+                            if report_path:
+                                push_report_detail(
+                                    report_heap,
+                                    stats["rows_with_removed_keywords"],
+                                    merchant_name,
+                                    removed,
+                                )
 
-        if removed:
-            stats["rows_affected"] += 1
-            stats["total_removed"] += len(removed)
-            for r in removed:
-                if r.startswith("[LEN"):
-                    stats["removed_len"] += 1
-                elif r.startswith("[STOPWORD]"):
-                    stats["removed_stopword"] += 1
-                elif r.startswith("[DUP]"):
-                    stats["removed_dup"] += 1
+                    writer.writerow({column: row.get(column, "") for column in input_columns})
 
-            row["keywords"] = clean_str
-            stats["total_kw_before"] += original_count
-            stats["total_kw_after"] += len(kept)
+        os.replace(temporary_path, input_path)
+    except Exception:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+        raise
 
-            cleaned_details.append({
-                "merchant_name": merchant_name,
-                "removed_count": len(removed),
-                "removed": " || ".join(removed),
-            })
+    print(f"\n[clean_keywords] {'=' * 50}")
+    print(f"  Mode:             {mode}")
+    print(f"  Total rows:       {stats['total_rows']:>10,}")
+    print(f"  Rows processed:   {stats['rows_processed']:>10,}")
+    print(f"  Rows changed:     {stats['rows_changed']:>10,}")
+    print(f"  Keywords removed: {stats['total_removed']:>10,}")
+    print(f"    - Length:       {stats['removed_len']:>10,}")
+    print(f"    - Stopword:     {stats['removed_stopword']:>10,}")
+    print(f"    - Dedup:        {stats['removed_dup']:>10,}")
 
-    stats["total_rows"] = len(rows)
-
-    # -- 写回 --
-    print(f"[clean_keywords] Writing back to {internal_path}...")
-    with open(internal_path, "w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=input_columns, extrasaction='ignore')
-        writer.writeheader()
-        writer.writerows(rows)
-
-    # -- 统计 --
-    print(f"\n[clean_keywords] {'='*50}")
-    print(f"  Mode:            {mode}")
-    print(f"  Total rows:      {stats['total_rows']:>10,}")
-    print(f"  Rows affected:   {stats['rows_affected']:>10,}")
-    print(f"  Keywords removed:{stats['total_removed']:>10,}")
-    print(f"    - Length:      {stats['removed_len']:>10,}")
-    print(f"    - Stopword:    {stats['removed_stopword']:>10,}")
-    print(f"    - Dedup:       {stats['removed_dup']:>10,}")
-
-    # -- 写详细报告 --
-    if report_path and cleaned_details:
-        cleaned_details.sort(key=lambda x: x["removed_count"], reverse=True)
-        with open(report_path, "w", encoding="utf-8", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=["merchant_name", "removed_count", "removed"])
-            writer.writeheader()
-            for d in cleaned_details[:500]:
-                writer.writerow(d)
-        print(f"  Report:          {report_path}")
+    if report_path:
+        write_report(report_path, report_heap)
 
     return dict(stats)
 
 
-# --- 独立运行 ---
-if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser(description="Clean keywords in kb_internal.csv")
-    parser.add_argument("--full", action="store_true", help="Full clean (all rows)")
-    parser.add_argument("--input", type=Path, default=INTERNAL_FILE)
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Clean keywords in merchant_kb.csv")
+    parser.add_argument("--input", type=Path, default=FINAL_OUTPUT)
     parser.add_argument("--report", type=Path, default=None)
+    parser.add_argument(
+        "--changed-since",
+        default="",
+        help="Only clean rows with keyword_created_at >= this timestamp",
+    )
+    parser.add_argument(
+        "--full",
+        action="store_true",
+        help="Clean all rows. This is the default when --changed-since is omitted.",
+    )
     args = parser.parse_args()
 
-    process_keywords(args.input, full_clean=args.full, report_path=args.report)
+    process_keywords(
+        input_path=args.input,
+        full_clean=args.full or not args.changed_since,
+        report_path=args.report,
+        changed_since=args.changed_since,
+    )
+
+
+if __name__ == "__main__":
+    main()

@@ -68,6 +68,7 @@ python build_knowledge_base.py --xml-dir xml_input --target merchant_kb.csv
 ```bash
 python clean_keywords.py --input merchant_kb.csv
 python clean_keywords.py --input merchant_kb.csv --full
+python clean_keywords.py --input merchant_kb.csv --changed-since 2026-07-28
 python clean_keywords.py --input merchant_kb.csv --report cleaning_report.csv
 ```
 
