@@ -312,6 +312,29 @@ RULES: list[Rule] = [
 ]
 
 
+@dataclass
+class _CompiledRule:
+    name: str
+    category: str
+    pattern: re.Pattern[str]
+
+
+def _build_compiled_rules(rules: list[Rule]) -> list[_CompiledRule]:
+    compiled: list[_CompiledRule] = []
+    for rule in rules:
+        escaped = [re.escape(kw) for kw in rule.keywords]
+        alternation = "|".join(escaped)
+        pattern = re.compile(
+            r"(?<![a-zA-Z0-9])(?:" + alternation + r")(?![a-zA-Z0-9])",
+            re.IGNORECASE,
+        )
+        compiled.append(_CompiledRule(rule.name, rule.category, pattern))
+    return compiled
+
+
+COMPILED_RULES: list[_CompiledRule] = _build_compiled_rules(RULES)
+
+
 # ── Helper functions ──────────────────────────────────────────────────────────
 
 
@@ -352,12 +375,6 @@ def write_merchant_kb(path: Path, rows: list[dict[str, str]]) -> None:
     temp_path.replace(target_path)
 
 
-def word_boundary_match(text: str, keyword: str) -> bool:
-    """Return True when *keyword* appears as a whole-word/phrase in *text*."""
-    pattern = r"(?<![a-zA-Z0-9])" + re.escape(keyword) + r"(?![a-zA-Z0-9])"
-    return bool(re.search(pattern, text, re.IGNORECASE))
-
-
 def build_search_text(merchant_name: str, keywords: str) -> str:
     """Combine merchant_name and all keywords into one searchable string."""
     parts = [normalize_space(merchant_name)]
@@ -370,10 +387,9 @@ def build_search_text(merchant_name: str, keywords: str) -> str:
 
 def match_rules(search_text: str) -> tuple[str, str]:
     """Match search_text against rules in priority order. Returns (category, rule_name) or ("", "")."""
-    for rule in RULES:
-        for keyword in rule.keywords:
-            if word_boundary_match(search_text, keyword):
-                return rule.category, rule.name
+    for compiled in COMPILED_RULES:
+        if compiled.pattern.search(search_text):
+            return compiled.category, compiled.name
     return "", ""
 
 
