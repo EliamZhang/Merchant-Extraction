@@ -48,6 +48,10 @@ STATUS_GONE = "GONE"
 MIN_KEYWORD_LEN = 5  # 最短关键词长度
 MIN_DISTINCTIVE_KEYWORD_TOKENS = 1  # 清理后至少保留多少个非泛化词
 
+# 模糊匹配阈值：关键词与商户名的 token 重叠率低于此值时移除
+# 0.0 = 仅移除与商户名零重叠的关键词（最保守，只清除完全无关的污染）
+KEYWORD_NAME_SIMILARITY_THRESHOLD = 0.0
+
 # 交易流水中常见的支付/渠道前缀。它们本身不能帮助识别商户，
 # 出现在关键词开头时会被剥离，整条只剩这些词时会被移除。
 PAYMENT_PREFIX_WORDS = frozenset({
