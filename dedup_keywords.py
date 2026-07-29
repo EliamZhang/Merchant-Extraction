@@ -403,7 +403,11 @@ def process_keywords(
     removed_generic = 0
     removed_namemismatch = 0
 
+    PROGRESS_EVERY = 10_000
+
     process_all_rows = full_clean or not changed_since
+
+    print(f"[dedup_keywords] {mode} | input: {input_path}")
 
     try:
         with input_path.open(
@@ -483,6 +487,14 @@ def process_keywords(
                     # DictWriter already selects fields in input_columns and ignores
                     # extras, so rebuilding a dictionary for every row is unnecessary.
                     writer.writerow(row)
+
+                    if total_rows % PROGRESS_EVERY == 0:
+                        print(
+                            f"  {total_rows:,} rows scanned, "
+                            f"{rows_processed:,} processed, "
+                            f"{rows_changed:,} changed, "
+                            f"{removed_len + removed_stopword + removed_dup + removed_generic + removed_namemismatch} removed"
+                        )
 
         if temporary_path is None:
             raise RuntimeError("Temporary output file was not created")
