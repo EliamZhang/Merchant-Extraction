@@ -6,7 +6,6 @@
 
 ```
 Business bd/
-├── rules_engine.py          # 规则引擎：高置信度关键词分类
 ├── build_knowledge_base.py  # 官方企业库构建（XML 直接合并到 merchant_kb.csv）
 ├── dedup_keywords.py        # 关键词清洗去重
 ├── merge_manual_entries.py  # 手工补充合并
