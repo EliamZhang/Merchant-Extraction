@@ -195,10 +195,10 @@ class MerchantCategoryPromptConfig:
         ]
         return (
             "You are classifying merchants from a merchant knowledge base.\n"
-            "Use merchant_name as the primary evidence. Use keywords and link only as supporting evidence.\n"
-            "Use web search to check the merchant's official website or reliable business listings before deciding the category.\n"
+            "Use all available evidence, with merchant_name as the starting point. Keywords and link can provide strong category signals.\n"
+            "Use web search when needed to confirm uncertain merchants with an official website or reliable business listings.\n"
             "Classify by the merchant's apparent goods, services, or business activity, not by whether it is consumer-facing or B2B. "
-            "A perfect match is not required; use the closest sensible allowed category when one category is reasonably stronger than the others. "
+            "A perfect match is not required; use the closest sensible allowed category when one category is slightly more likely and defensible. "
             "Use an empty string only when the name is too generic, evidence is conflicting, the merchant is only a holding/investment entity, or no category is reasonably defensible.\n"
             "Category definitions:\n"
             "- Automotive: fuel, vehicle sales, car repair, auto parts, car washes, roadside and vehicle services.\n"
