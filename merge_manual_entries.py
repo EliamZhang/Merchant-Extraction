@@ -14,7 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from config import ADD_DIR, FINAL_OUTPUT
+from settings import ADD_DIR, FINAL_OUTPUT
 
 
 TARGET_COLUMNS = [
@@ -149,9 +149,9 @@ def main():
         description="Merge manually supplied merchant CSV files into the knowledge base"
     )
     parser.add_argument("--add-dir", type=Path, default=ADD_DIR,
-                        help="Directory containing source CSV files (default from config)")
+                        help="Directory containing source CSV files (default from settings)")
     parser.add_argument("--target", type=Path, default=FINAL_OUTPUT,
-                        help="Target merchant_kb.csv to merge into (default from config)")
+                        help="Target merchant_kb.csv to merge into (default from settings)")
     args = parser.parse_args()
 
     stats = merge_add_files(args.add_dir, args.target)

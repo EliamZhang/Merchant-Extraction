@@ -25,7 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from config import (
+from settings import (
     CANCEL_CUTOFF_DATE,
     FINAL_OUTPUT,
     FINAL_OUTPUT_COLUMNS,

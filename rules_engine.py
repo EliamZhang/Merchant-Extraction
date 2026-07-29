@@ -14,16 +14,16 @@ Behaviour
 Examples
 --------
 Preview the high-confidence updates without changing the KB:
-    python classify_by_rules_high_confidence.py --dry-run --verbose
+    python rules_engine.py --dry-run --verbose
 
 Update merchant_kb.csv directly:
-    python classify_by_rules_high_confidence.py
+    python rules_engine.py
 
 Use another KB path:
-    python classify_by_rules_high_confidence.py --merchant-kb data/merchant_kb.csv
+    python rules_engine.py --merchant-kb data/merchant_kb.csv
 
 Use stricter thresholds:
-    python classify_by_rules_high_confidence.py --min-score 95 --min-margin 25
+    python rules_engine.py --min-score 95 --min-margin 25
 """
 
 from __future__ import annotations

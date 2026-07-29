@@ -17,7 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from config import (
+from settings import (
     FINAL_OUTPUT,
     FINAL_OUTPUT_COLUMNS,
     KNOWN_ABBREVIATIONS,
@@ -158,7 +158,7 @@ def process_keywords(
     del now
 
     if not input_path.exists():
-        print(f"[clean_keywords] {input_path} not found -- nothing to clean")
+        print(f"[dedup_keywords] {input_path} not found -- nothing to clean")
         return None
 
     mode = "FULL" if full_clean or not changed_since else f"CHANGED SINCE {changed_since}"
@@ -229,7 +229,7 @@ def process_keywords(
             temporary_path.unlink(missing_ok=True)
         raise
 
-    print(f"[clean_keywords] {mode} | rows: {stats['total_rows']:,} processed: {stats['rows_processed']:,} changed: {stats['rows_changed']:,} | removed: {stats['total_removed']:,} (len:{stats['removed_len']:,} stop:{stats['removed_stopword']:,} dup:{stats['removed_dup']:,} generic:{stats['removed_generic']:,})")
+    print(f"[dedup_keywords] {mode} | rows: {stats['total_rows']:,} processed: {stats['rows_processed']:,} changed: {stats['rows_changed']:,} | removed: {stats['total_removed']:,} (len:{stats['removed_len']:,} stop:{stats['removed_stopword']:,} dup:{stats['removed_dup']:,} generic:{stats['removed_generic']:,})")
 
     if report_path:
         write_report(report_path, report_heap)

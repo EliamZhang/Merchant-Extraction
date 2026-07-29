@@ -6,12 +6,13 @@
 
 ```
 Business bd/
+├── rules_engine.py          # 规则引擎：高置信度关键词分类
 ├── build_knowledge_base.py  # 官方企业库构建（XML 直接合并到 merchant_kb.csv）
-├── clean_keywords.py        # 关键词清洗
+├── dedup_keywords.py        # 关键词清洗去重
 ├── merge_manual_entries.py  # 手工补充合并
-├── classify_merchants.py    # AI 分类（DeepSeek）
+├── label_merchants.py       # AI 分类（DeepSeek）
 ├── verify_merchants.py      # AI 第三方验证（DeepSeek）
-├── config.py                # 全局配置
+├── settings.py              # 全局配置
 ├── utils.py                 # 通用工具
 ├── xml_input/               # 输入：ABR XML 报文
 ├── manual_entries/          # 输入：手工补充 CSV
@@ -35,12 +36,12 @@ xml_input/*.xml  →  build_knowledge_base.py  →  merchant_kb.csv
 | 步骤 | 脚本 | 功能 |
 |------|------|------|
 | 1 | `build_knowledge_base.py` | 解析 XML → 过滤 PRV/PUB → 合并到 `merchant_kb.csv`；已有主体只补 keywords，新主体追加 |
-| 2 | `clean_keywords.py` | 可选：清洗 keywords：移除过短词、停用词、去重 |
+| 2 | `dedup_keywords.py` | 可选：清洗 keywords：移除过短词、停用词、去重 |
 | — | `merge_manual_entries.py` | 独立通道：将 `manual_entries/*.csv` 手工合并到知识库 |
 
 ```bash
 python build_knowledge_base.py
-python clean_keywords.py --input merchant_kb.csv --full
+python dedup_keywords.py --input merchant_kb.csv --full
 ```
 
 ### 工作流 B：AI 处理
@@ -49,7 +50,7 @@ python clean_keywords.py --input merchant_kb.csv --full
 
 | 脚本 | 功能 |
 |------|------|
-| `classify_merchants.py` | 用 DeepSeek 对 `merchant_kb.csv` 中的商户进行 AI 分类 |
+| `label_merchants.py` | 用 DeepSeek 对 `merchant_kb.csv` 中的商户进行 AI 分类 |
 | `verify_merchants.py` | 验证银行交易对手方是否为真实商户，提取标准化名称和关键词 |
 
 ## 各脚本用法
@@ -63,13 +64,13 @@ python build_knowledge_base.py --xml-dir xml_input --target merchant_kb.csv
 
 一条命令完成：解析 `xml_input/*.xml` → 过滤（PRV/PUB，排除 2023 年前注销）→ 直接合并到 `merchant_kb.csv`。如果主体已存在，不新增重复行，只把 ABR 里的别名/交易名补进 keywords。
 
-### clean_keywords — 关键词清洗
+### dedup_keywords — 关键词清洗去重
 
 ```bash
-python clean_keywords.py --input merchant_kb.csv
-python clean_keywords.py --input merchant_kb.csv --full
-python clean_keywords.py --input merchant_kb.csv --changed-since 2026-07-28
-python clean_keywords.py --input merchant_kb.csv --report cleaning_report.csv
+python dedup_keywords.py --input merchant_kb.csv
+python dedup_keywords.py --input merchant_kb.csv --full
+python dedup_keywords.py --input merchant_kb.csv --changed-since 2026-07-28
+python dedup_keywords.py --input merchant_kb.csv --report cleaning_report.csv
 ```
 
 清洗规则：
@@ -88,18 +89,18 @@ python merge_manual_entries.py --add-dir manual_entries/ --target merchant_kb.cs
 - 已有商户：填补空白字段（keywords、link、category）
 - 新商户：插入到文件顶部
 
-> 合并后建议跑一次清洗：`python clean_keywords.py --input merchant_kb.csv`
+> 合并后建议跑一次清洗：`python dedup_keywords.py --input merchant_kb.csv`
 
-### classify_merchants — AI 分类
+### label_merchants — AI 分类
 
 ```bash
-python classify_merchants.py \
+python label_merchants.py \
   --api-key "$DEEPSEEK_API_KEY" \
   --merchant-kb merchant_kb.csv \
   --cache cache/merchant_category_cache.json
 
 # 常用选项
-python classify_merchants.py \
+python label_merchants.py \
   --api-key "$DEEPSEEK_API_KEY" \
   --batch-size 50 \           # 每批商户数（默认 50）
   --row-limit 100 \           # 只处理前 N 行（测试用）
@@ -131,7 +132,7 @@ python verify_merchants.py \
 
 ## 配置
 
-所有可调参数集中在 `config.py`：
+所有可调参数集中在 `settings.py`：
 
 | 配置项 | 说明 |
 |--------|------|
