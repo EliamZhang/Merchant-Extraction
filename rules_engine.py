@@ -14,16 +14,16 @@ Behaviour
 Examples
 --------
 Preview the high-confidence updates without changing the KB:
-    python rules_engine.py --dry-run --verbose
+    python classify_by_rules_high_confidence.py --dry-run --verbose
 
 Update merchant_kb.csv directly:
-    python rules_engine.py
+    python classify_by_rules_high_confidence.py
 
 Use another KB path:
-    python rules_engine.py --merchant-kb data/merchant_kb.csv
+    python classify_by_rules_high_confidence.py --merchant-kb data/merchant_kb.csv
 
 Use stricter thresholds:
-    python rules_engine.py --min-score 95 --min-margin 25
+    python classify_by_rules_high_confidence.py --min-score 95 --min-margin 25
 """
 
 from __future__ import annotations
@@ -36,6 +36,7 @@ import sys
 import unicodedata
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Iterable, Sequence
 from urllib.parse import urlparse
@@ -195,6 +196,11 @@ class MerchantContext:
     hostname: str
     domain_text: str
     combined_text: str
+    name_search: str
+    keywords_search: str
+    domain_search: str
+    combined_search: str
+    tokens: frozenset[str]
 
 
 @dataclass(frozen=True)
@@ -1739,8 +1745,54 @@ RULES: tuple[Rule, ...] = (
 
 
 # =============================================================================
-# Text and CSV helpers
+# Text, rule-compilation and CSV helpers
 # =============================================================================
+
+
+# Compiled regular expressions avoid rebuilding the same regex objects for every
+# merchant and every rule phrase.
+_SPACE_RE = re.compile(r"\s+")
+_POSSESSIVE_RE = re.compile(r"(?<=\w)[’']s\b")
+_APOSTROPHE_RE = re.compile(r"[’'`]")
+_SEPARATOR_RE = re.compile(r"[_/\\]+")
+_DASH_RE = re.compile(r"[-–—]+")
+_NON_WORD_SPACE_RE = re.compile(r"[^\w\s]", flags=re.UNICODE)
+_NON_WORD_RE = re.compile(r"[^\w]", flags=re.UNICODE)
+_KEYWORD_SPLIT_RE = re.compile(r"\s*\|\s*|\r?\n+")
+
+# Bounded caches keep frequently repeated merchant/rule strings fast without
+# allowing memory use to grow indefinitely on very large files.
+TEXT_CACHE_SIZE = 100_000
+HOST_CACHE_SIZE = 50_000
+
+
+@dataclass(frozen=True)
+class CompiledRule:
+    """A Rule with all fixed text normalized once at startup."""
+
+    original: Rule
+    exact_names: tuple[tuple[str, str, str], ...]
+    exact_domains: tuple[tuple[str, str], ...]
+    strong: tuple[tuple[str, str], ...]
+    weak: tuple[tuple[str, str], ...]
+    required_any: tuple[tuple[str, str], ...]
+    required_all: tuple[tuple[str, str], ...]
+    excludes: tuple[tuple[str, str], ...]
+
+
+@dataclass
+class RuleEngine:
+    """Precompiled rules and indexes used to select candidate rules quickly."""
+
+    rules: tuple[CompiledRule, ...]
+    token_index: dict[str, tuple[int, ...]]
+    exact_name_index: dict[str, tuple[int, ...]]
+    exact_name_compact_index: dict[str, tuple[int, ...]]
+    exact_domain_index: dict[str, tuple[int, ...]]
+    global_skip_phrases: tuple[tuple[str, str], ...]
+
+
+_RULE_ENGINE: RuleEngine | None = None
 
 
 def now_china_timestamp() -> str:
@@ -1759,34 +1811,53 @@ def clean_value(value: object) -> str:
 
 
 def normalize_space(value: object) -> str:
-    return re.sub(r"\s+", " ", clean_value(value)).strip()
+    return _SPACE_RE.sub(" ", clean_value(value)).strip()
+
+
+@lru_cache(maxsize=TEXT_CACHE_SIZE)
+def _normalize_text_cached(text: str) -> str:
+    """Normalize an already-clean string; safe to memoize because it is pure."""
+
+    text = unicodedata.normalize("NFKC", text).lower()
+    text = text.replace("&", " and ")
+    text = _POSSESSIVE_RE.sub("s", text)
+    text = _APOSTROPHE_RE.sub("", text)
+    text = text.replace("+", " plus ")
+    text = _SEPARATOR_RE.sub(" ", text)
+    text = _DASH_RE.sub(" ", text)
+    text = _NON_WORD_SPACE_RE.sub(" ", text)
+    return _SPACE_RE.sub(" ", text).strip()
 
 
 def normalize_text(value: object) -> str:
     """Normalize punctuation, whitespace and common company-name variants."""
 
-    text = unicodedata.normalize("NFKC", clean_value(value)).lower()
-    text = text.replace("&", " and ")
-    text = re.sub(r"(?<=\w)[’']s\b", "s", text)
-    text = re.sub(r"[’'`]", "", text)
-    text = text.replace("+", " plus ")
-    text = re.sub(r"[_/\\]+", " ", text)
-    text = re.sub(r"[-–—]+", " ", text)
-    text = re.sub(r"[^\w\s]", " ", text, flags=re.UNICODE)
-    return re.sub(r"\s+", " ", text).strip()
+    return _normalize_text_cached(clean_value(value))
+
+
+@lru_cache(maxsize=TEXT_CACHE_SIZE)
+def _compact_normalized_text(normalized_text: str) -> str:
+    return _NON_WORD_RE.sub("", normalized_text)
 
 
 def compact_text(value: object) -> str:
-    return re.sub(r"[^\w]", "", normalize_text(value), flags=re.UNICODE)
+    return _compact_normalized_text(normalize_text(value))
 
 
-def strip_business_suffixes(name: str) -> str:
-    result = normalize_text(name)
+@lru_cache(maxsize=1)
+def _normalized_business_suffixes() -> tuple[str, ...]:
+    return tuple(normalize_text(suffix) for suffix in BUSINESS_SUFFIXES)
+
+
+@lru_cache(maxsize=TEXT_CACHE_SIZE)
+def _strip_business_suffixes_cached(normalized_name: str) -> str:
+    result = normalized_name
     changed = True
+    suffixes = _normalized_business_suffixes()
+
     while result and changed:
         changed = False
-        for suffix in BUSINESS_SUFFIXES:
-            suffix_norm = normalize_text(suffix)
+        for suffix_norm in suffixes:
             if result == suffix_norm:
                 return ""
             marker = f" {suffix_norm}"
@@ -1797,15 +1868,18 @@ def strip_business_suffixes(name: str) -> str:
     return result
 
 
+def strip_business_suffixes(name: str) -> str:
+    return _strip_business_suffixes_cached(normalize_text(name))
+
+
 def split_keywords(value: object) -> list[str]:
     text = clean_value(value)
     if not text:
         return []
-    # The existing KB uses "|". Newlines are accepted as a convenience.
-    parts = re.split(r"\s*\|\s*|\r?\n+", text)
+
     result: list[str] = []
     seen: set[str] = set()
-    for part in parts:
+    for part in _KEYWORD_SPLIT_RE.split(text):
         normalized = normalize_text(part)
         if normalized and normalized not in seen:
             seen.add(normalized)
@@ -1813,8 +1887,8 @@ def split_keywords(value: object) -> list[str]:
     return result
 
 
-def normalize_hostname(url: object) -> str:
-    raw = clean_value(url)
+@lru_cache(maxsize=HOST_CACHE_SIZE)
+def _normalize_hostname_cached(raw: str) -> str:
     if not raw:
         return ""
     candidate = raw if "://" in raw else f"https://{raw}"
@@ -1827,23 +1901,34 @@ def normalize_hostname(url: object) -> str:
     return hostname
 
 
+def normalize_hostname(url: object) -> str:
+    return _normalize_hostname_cached(clean_value(url))
+
+
 def domain_to_text(hostname: str) -> str:
     if not hostname:
         return ""
     return normalize_text(hostname.replace(".", " ").replace("-", " "))
 
 
-def phrase_in_text(text: str, phrase: str) -> bool:
-    """Token-aware phrase matching on normalized text."""
+def _as_search_text(normalized_text: str) -> str:
+    return f" {normalized_text} " if normalized_text else ""
 
-    phrase_norm = normalize_text(phrase)
-    if not phrase_norm or not text:
-        return False
-    return f" {phrase_norm} " in f" {text} "
+
+def _phrase_in_search(search_text: str, normalized_phrase: str) -> bool:
+    """Token-aware match where both inputs have already been normalized."""
+
+    return bool(search_text and normalized_phrase and f" {normalized_phrase} " in search_text)
+
+
+def phrase_in_text(text: str, phrase: str) -> bool:
+    """Compatibility wrapper for token-aware matching on normalized text."""
+
+    return _phrase_in_search(_as_search_text(text), normalize_text(phrase))
 
 
 def phrase_anywhere(context: MerchantContext, phrase: str) -> bool:
-    return phrase_in_text(context.combined_text, phrase)
+    return _phrase_in_search(context.combined_search, normalize_text(phrase))
 
 
 def build_context(row: dict[str, str]) -> MerchantContext:
@@ -1854,9 +1939,19 @@ def build_context(row: dict[str, str]) -> MerchantContext:
     keywords_text = " | ".join(keyword_items)
     hostname = normalize_hostname(row.get("link", ""))
     domain_text = domain_to_text(hostname)
+
+    # name_core is intentionally omitted here because it is a strict prefix of
+    # name after suffix removal and therefore adds duplicate phrase checks.
     combined_text = " | ".join(
-        part for part in (name, name_core, keywords_text, domain_text) if part
+        part for part in (name, keywords_text, domain_text) if part
     )
+
+    name_search = _as_search_text(name)
+    keywords_search = _as_search_text(keywords_text)
+    domain_search = _as_search_text(domain_text)
+    combined_search = _as_search_text(combined_text)
+    tokens = frozenset(token for token in combined_text.split() if token != "|")
+
     return MerchantContext(
         merchant_name_raw=merchant_name_raw,
         name=name,
@@ -1867,6 +1962,11 @@ def build_context(row: dict[str, str]) -> MerchantContext:
         hostname=hostname,
         domain_text=domain_text,
         combined_text=combined_text,
+        name_search=name_search,
+        keywords_search=keywords_search,
+        domain_search=domain_search,
+        combined_search=combined_search,
+        tokens=tokens,
     )
 
 
@@ -1932,17 +2032,154 @@ def validate_rules(rules: Sequence[Rule]) -> None:
             raise ValueError(f"Rule {rule.name!r} has no matching evidence.")
 
 
+def _compile_phrase_pairs(values: Sequence[str]) -> tuple[tuple[str, str], ...]:
+    result: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for original in values:
+        normalized = normalize_text(original)
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            result.append((original, normalized))
+    return tuple(result)
+
+
+def _compile_exact_names(values: Sequence[str]) -> tuple[tuple[str, str, str], ...]:
+    result: list[tuple[str, str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for original in values:
+        normalized = strip_business_suffixes(original)
+        compact = compact_text(normalized)
+        key = (normalized, compact)
+        if normalized and key not in seen:
+            seen.add(key)
+            result.append((original, normalized, compact))
+    return tuple(result)
+
+
+def _compile_exact_domains(values: Sequence[str]) -> tuple[tuple[str, str], ...]:
+    result: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for original in values:
+        normalized = normalize_hostname(original)
+        if not normalized:
+            normalized = clean_value(original).lower().strip(".")
+            if normalized.startswith("www."):
+                normalized = normalized[4:]
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            result.append((original, normalized))
+    return tuple(result)
+
+
+def _freeze_index(index: dict[str, set[int]]) -> dict[str, tuple[int, ...]]:
+    return {key: tuple(sorted(values)) for key, values in index.items()}
+
+
+def _build_rule_engine(rules: Sequence[Rule]) -> RuleEngine:
+    validate_rules(rules)
+
+    compiled_rules: list[CompiledRule] = []
+    token_index_work: dict[str, set[int]] = defaultdict(set)
+    exact_name_index_work: dict[str, set[int]] = defaultdict(set)
+    exact_name_compact_index_work: dict[str, set[int]] = defaultdict(set)
+    exact_domain_index_work: dict[str, set[int]] = defaultdict(set)
+
+    for rule_index, rule in enumerate(rules):
+        exact_names = _compile_exact_names(rule.exact_names)
+        exact_domains = _compile_exact_domains(rule.exact_domains)
+        strong = _compile_phrase_pairs(rule.strong)
+        weak = _compile_phrase_pairs(rule.weak)
+        required_any = _compile_phrase_pairs(rule.required_any)
+        required_all = _compile_phrase_pairs(rule.required_all)
+        excludes = _compile_phrase_pairs(rule.excludes)
+
+        compiled_rules.append(
+            CompiledRule(
+                original=rule,
+                exact_names=exact_names,
+                exact_domains=exact_domains,
+                strong=strong,
+                weak=weak,
+                required_any=required_any,
+                required_all=required_all,
+                excludes=excludes,
+            )
+        )
+
+        # A rule can only produce evidence when an exact value or one of its
+        # strong/weak phrases is present. Indexing these signals avoids scanning
+        # every rule for every merchant.
+        for _, normalized, compact in exact_names:
+            exact_name_index_work[normalized].add(rule_index)
+            if compact:
+                exact_name_compact_index_work[compact].add(rule_index)
+
+        for _, normalized in exact_domains:
+            exact_domain_index_work[normalized].add(rule_index)
+
+        for _, normalized in (*strong, *weak):
+            for token in normalized.split():
+                token_index_work[token].add(rule_index)
+
+    return RuleEngine(
+        rules=tuple(compiled_rules),
+        token_index=_freeze_index(token_index_work),
+        exact_name_index=_freeze_index(exact_name_index_work),
+        exact_name_compact_index=_freeze_index(exact_name_compact_index_work),
+        exact_domain_index=_freeze_index(exact_domain_index_work),
+        global_skip_phrases=_compile_phrase_pairs(GLOBAL_SKIP_PHRASES),
+    )
+
+
+def get_rule_engine() -> RuleEngine:
+    global _RULE_ENGINE
+    if _RULE_ENGINE is None:
+        _RULE_ENGINE = _build_rule_engine(RULES)
+    return _RULE_ENGINE
+
+
+def _candidate_rule_indexes(
+    context: MerchantContext,
+    engine: RuleEngine,
+) -> tuple[int, ...]:
+    candidates: set[int] = set()
+
+    for token in context.tokens:
+        candidates.update(engine.token_index.get(token, ()))
+
+    candidates.update(engine.exact_name_index.get(context.name, ()))
+    candidates.update(engine.exact_name_index.get(context.name_core, ()))
+    candidates.update(engine.exact_name_compact_index.get(context.name_compact, ()))
+
+    if context.hostname:
+        hostname_parts = context.hostname.split(".")
+        for index in range(len(hostname_parts)):
+            suffix = ".".join(hostname_parts[index:])
+            candidates.update(engine.exact_domain_index.get(suffix, ()))
+
+    return tuple(sorted(candidates))
+
+
 def _deduplicate_evidence(items: Iterable[Evidence]) -> tuple[Evidence, ...]:
     best: dict[tuple[str, str], Evidence] = {}
+    normalized_by_id: dict[int, str] = {}
+
     for item in items:
-        key = (item.field, normalize_text(item.phrase))
+        normalized = normalize_text(item.phrase)
+        normalized_by_id[id(item)] = normalized
+        key = (item.field, normalized)
         previous = best.get(key)
         if previous is None or item.weight > previous.weight:
             best[key] = item
+
     return tuple(
         sorted(
             best.values(),
-            key=lambda item: (-item.weight, item.field, normalize_text(item.phrase)),
+            key=lambda item: (
+                -item.weight,
+                item.field,
+                normalized_by_id.get(id(item), normalize_text(item.phrase)),
+            ),
         )
     )
 
@@ -1982,22 +2219,43 @@ def _score_evidence(evidence: Sequence[Evidence], score_adjustment: int) -> int:
     return max(0, min(100, score))
 
 
-def evaluate_rule(rule: Rule, context: MerchantContext) -> RuleMatch | None:
-    if any(phrase_anywhere(context, phrase) for phrase in rule.excludes):
+def _compiled_exact_name_matches(
+    context: MerchantContext,
+    normalized: str,
+    compact: str,
+) -> bool:
+    if context.name == normalized or context.name_core == normalized:
+        return True
+    return bool(compact and context.name_compact == compact)
+
+
+def _compiled_exact_domain_matches(hostname: str, expected: str) -> bool:
+    return bool(
+        hostname
+        and expected
+        and (hostname == expected or hostname.endswith(f".{expected}"))
+    )
+
+
+def evaluate_rule(rule: CompiledRule, context: MerchantContext) -> RuleMatch | None:
+    if any(
+        _phrase_in_search(context.combined_search, normalized)
+        for _, normalized in rule.excludes
+    ):
         return None
 
     evidence: list[Evidence] = []
 
-    for expected in rule.exact_names:
-        if exact_name_matches(context, expected):
+    for original, normalized, compact in rule.exact_names:
+        if _compiled_exact_name_matches(context, normalized, compact):
             evidence.append(
-                Evidence("merchant_name", expected, "exact", WEIGHT_EXACT_NAME)
+                Evidence("merchant_name", original, "exact", WEIGHT_EXACT_NAME)
             )
 
-    for expected in rule.exact_domains:
-        if exact_domain_matches(context.hostname, expected):
+    for original, normalized in rule.exact_domains:
+        if _compiled_exact_domain_matches(context.hostname, normalized):
             evidence.append(
-                Evidence("domain", expected, "exact", WEIGHT_EXACT_DOMAIN)
+                Evidence("domain", original, "exact", WEIGHT_EXACT_DOMAIN)
             )
 
     # Exact merchant/domain matches are allowed to bypass supporting conditions.
@@ -2005,43 +2263,53 @@ def evaluate_rule(rule: Rule, context: MerchantContext) -> RuleMatch | None:
     has_exact_evidence = bool(evidence)
     if not has_exact_evidence:
         if rule.required_any and not any(
-            phrase_anywhere(context, phrase) for phrase in rule.required_any
+            _phrase_in_search(context.combined_search, normalized)
+            for _, normalized in rule.required_any
         ):
             return None
 
         if rule.required_all and not all(
-            phrase_anywhere(context, phrase) for phrase in rule.required_all
+            _phrase_in_search(context.combined_search, normalized)
+            for _, normalized in rule.required_all
         ):
             return None
 
-    for phrase in rule.strong:
-        if phrase_in_text(context.name, phrase) or phrase_in_text(context.name_core, phrase):
+    for original, normalized in rule.strong:
+        if _phrase_in_search(context.name_search, normalized):
             evidence.append(
-                Evidence("merchant_name", phrase, "strong", WEIGHT_STRONG_NAME)
+                Evidence("merchant_name", original, "strong", WEIGHT_STRONG_NAME)
             )
-        if phrase_in_text(context.domain_text, phrase):
-            evidence.append(Evidence("domain", phrase, "strong", WEIGHT_STRONG_DOMAIN))
-        if phrase_in_text(context.keywords_text, phrase):
+        if _phrase_in_search(context.domain_search, normalized):
             evidence.append(
-                Evidence("keywords", phrase, "strong", WEIGHT_STRONG_KEYWORD)
+                Evidence("domain", original, "strong", WEIGHT_STRONG_DOMAIN)
+            )
+        if _phrase_in_search(context.keywords_search, normalized):
+            evidence.append(
+                Evidence("keywords", original, "strong", WEIGHT_STRONG_KEYWORD)
             )
 
-    for phrase in rule.weak:
-        if phrase_in_text(context.name, phrase) or phrase_in_text(context.name_core, phrase):
-            evidence.append(Evidence("merchant_name", phrase, "weak", WEIGHT_WEAK_NAME))
-        if phrase_in_text(context.domain_text, phrase):
-            evidence.append(Evidence("domain", phrase, "weak", WEIGHT_WEAK_DOMAIN))
-        if phrase_in_text(context.keywords_text, phrase):
-            evidence.append(Evidence("keywords", phrase, "weak", WEIGHT_WEAK_KEYWORD))
+    for original, normalized in rule.weak:
+        if _phrase_in_search(context.name_search, normalized):
+            evidence.append(
+                Evidence("merchant_name", original, "weak", WEIGHT_WEAK_NAME)
+            )
+        if _phrase_in_search(context.domain_search, normalized):
+            evidence.append(
+                Evidence("domain", original, "weak", WEIGHT_WEAK_DOMAIN)
+            )
+        if _phrase_in_search(context.keywords_search, normalized):
+            evidence.append(
+                Evidence("keywords", original, "weak", WEIGHT_WEAK_KEYWORD)
+            )
 
     unique_evidence = _deduplicate_evidence(evidence)
     if not unique_evidence:
         return None
 
-    score = _score_evidence(unique_evidence, rule.score_adjustment)
+    score = _score_evidence(unique_evidence, rule.original.score_adjustment)
     return RuleMatch(
-        rule_name=rule.name,
-        category=rule.category,
+        rule_name=rule.original.name,
+        category=rule.original.category,
         score=score,
         evidence=unique_evidence,
     )
@@ -2085,11 +2353,19 @@ def classify_context(
     Every other outcome is ignored by the KB update process.
     """
 
-    if any(phrase_anywhere(context, phrase) for phrase in GLOBAL_SKIP_PHRASES):
+    engine = get_rule_engine()
+
+    if any(
+        _phrase_in_search(context.combined_search, normalized)
+        for _, normalized in engine.global_skip_phrases
+    ):
         return Decision(status="GLOBAL_SKIP")
 
+    candidate_indexes = _candidate_rule_indexes(context, engine)
     rule_matches = [
-        match for rule in RULES if (match := evaluate_rule(rule, context)) is not None
+        match
+        for index in candidate_indexes
+        if (match := evaluate_rule(engine.rules[index], context)) is not None
     ]
     candidates = aggregate_candidates(rule_matches)
 
@@ -2195,6 +2471,7 @@ def process_kb(args: argparse.Namespace) -> dict[str, int]:
     stats: Counter[str] = Counter()
     category_hits: Counter[str] = Counter()
     rule_hits: Counter[str] = Counter()
+    run_timestamp = now_china_timestamp()
 
     processing_succeeded = False
     try:
@@ -2225,7 +2502,7 @@ def process_kb(args: argparse.Namespace) -> dict[str, int]:
                 # These are the only KB mutations made by the script.
                 row["category"] = decision.category
                 row["category_source"] = f"RULES:{RULE_VERSION}"
-                row["category_updated_at"] = now_china_timestamp()
+                row["category_updated_at"] = run_timestamp
                 category_hits[decision.category] += 1
                 rule_hits[decision.winning_rule] += 1
 
