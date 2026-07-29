@@ -410,7 +410,7 @@ def classify_merchant_kb(
     batch_size: int = 5,
     timeout_seconds: int = 120,
     max_retries: int = 20,
-    retry_delay_seconds: float = 10.0,
+    retry_delay_seconds: float = 15.0,
     thinking_type: str = DEFAULT_THINKING_TYPE,
     reasoning_effort: str = DEFAULT_REASONING_EFFORT,
     only_missing: bool = True,
@@ -597,16 +597,7 @@ def classify_merchant_kb(
                 f"classified={stats['rows_classified']} updated={stats['rows_updated']}",
                 flush=True,
             )
-        classifications = []
-        for attempt in range(1, client.max_retries + 1):
-            try:
-                classifications = client.classify_merchant_batch([item for _, item in batch])
-                break
-            except Exception as exc:
-                print(f"  Batch {batch_number}/{batch_total} attempt {attempt}/{client.max_retries} failed: {exc}", flush=True)
-                if attempt >= client.max_retries:
-                    raise
-                time.sleep(client.retry_delay_seconds * attempt)
+        classifications = client.classify_merchant_batch([item for _, item in batch])
         stats["api_calls"] += 1
         batch_failures = 0
         for (row_index, item), classification in zip(batch, classifications):
@@ -675,7 +666,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--batch-size", type=int, default=5)
     parser.add_argument("--timeout-seconds", type=int, default=120)
     parser.add_argument("--max-retries", type=int, default=20)
-    parser.add_argument("--retry-delay-seconds", type=float, default=10.0)
+    parser.add_argument("--retry-delay-seconds", type=float, default=15.0)
     parser.add_argument(
         "--thinking-type",
         default=DEFAULT_THINKING_TYPE,

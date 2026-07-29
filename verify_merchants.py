@@ -1089,16 +1089,7 @@ def process_file(args: argparse.Namespace) -> None:
         batch_num += 1
         stats["api_calls"] += 1
 
-        decisions: dict[str, MerchantDecision] = {}
-        for attempt in range(1, client.max_retries + 1):
-            try:
-                decisions = client.verify_merchant_batch(batch_items)
-                break
-            except Exception as exc:
-                print(f"  Batch {batch_num} attempt {attempt}/{client.max_retries} failed: {exc}", flush=True)
-                if attempt >= client.max_retries:
-                    raise
-                time.sleep(client.retry_delay_seconds * attempt)
+        decisions = client.verify_merchant_batch(batch_items)
 
         batch_resolved = 0
         batch_unresolved = 0
@@ -1177,7 +1168,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--api-key", default=os.environ.get("DEEPSEEK_API_KEY", ""))
     parser.add_argument("--timeout-seconds", type=int, default=120)
     parser.add_argument("--max-retries", type=int, default=20)
-    parser.add_argument("--retry-delay-seconds", type=float, default=10.0)
+    parser.add_argument("--retry-delay-seconds", type=float, default=15.0)
     parser.add_argument(
         "--thinking-type",
         default=DEFAULT_THINKING_TYPE,
