@@ -397,8 +397,7 @@ def match_rules(search_text: str) -> tuple[str, str]:
 
 
 def process_kb(args: argparse.Namespace) -> dict:
-    if args.verbose or args.dry_run:
-        print(f"Reading merchant KB path={args.merchant_kb}", flush=True)
+    print(f"Processing {args.merchant_kb} ...", flush=True)
 
     reader = open_csv_dict_reader(args.merchant_kb)
     validate_kb_fieldnames(args.merchant_kb, reader)
@@ -467,7 +466,7 @@ def process_kb(args: argparse.Namespace) -> dict:
                     row.setdefault("category_source", "")
                 writer.writerow(row)
 
-            if stats["total"] % 500000 == 0:
+            if stats["total"] % 100000 == 0:
                 print(
                     f"  progress rows={stats['total']} matched={stats['matched']}",
                     flush=True,
