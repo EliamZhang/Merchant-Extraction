@@ -481,10 +481,11 @@ class KnowledgeBaseEntry:
 
 def validate_kb_fieldnames(path: Path, reader: csv.DictReader) -> None:
     fieldnames = list(reader.fieldnames or [])
-    if fieldnames != KB_FIELDNAMES:
+    missing = [col for col in KB_FIELDNAMES if col not in fieldnames]
+    if missing and missing != ["category_source"]:
         raise ValueError(
             f"Merchant KB schema mismatch in {path}. "
-            f"Expected columns {KB_FIELDNAMES}, got {fieldnames}."
+            f"Missing columns {missing}. Expected {KB_FIELDNAMES}, got {fieldnames}."
         )
 
 
@@ -493,6 +494,7 @@ KB_FIELDNAMES = [
     "keywords",
     "link",
     "category",
+    "category_source",
     "keyword_updated_at",
     "category_updated_at",
 ]
@@ -506,11 +508,16 @@ class MerchantKBCandidate:
 
 
 def normalize_kb_row(row: dict[str, str]) -> dict[str, str]:
+    category = clean_output_value(row.get("category", ""))
+    category_source = clean_output_value(row.get("category_source", ""))
+    if category and not category_source:
+        category_source = "AI"
     return {
         "merchant_name": normalize_space(row.get("merchant_name", "")),
         "keywords": KEYWORD_SEPARATOR.join(split_kb_keywords(row.get("keywords", ""))),
         "link": safe_url(row.get("link", "")),
-        "category": clean_output_value(row.get("category", "")),
+        "category": category,
+        "category_source": category_source,
         "keyword_updated_at": normalize_space(row.get("keyword_updated_at", "")),
         "category_updated_at": normalize_space(row.get("category_updated_at", "")),
     }
@@ -592,6 +599,7 @@ class MerchantKBUpdater:
                         "keywords": "",
                         "link": link,
                         "category": "",
+                        "category_source": "",
                         "keyword_updated_at": "",
                         "category_updated_at": "",
                     }
