@@ -526,50 +526,52 @@ def normalize_kb_row(row: dict[str, str]) -> dict[str, str]:
 class MerchantKBUpdater:
     def __init__(self, path: Path) -> None:
         self.path = path
+        self.rows: list[dict[str, str]] = []
+        self.row_index_by_normalized_name: dict[str, int] = {}
+        self.keyword_norms_by_normalized_name: dict[str, set[str]] = {}
+        self._dirty = False
+        self._load()
+
+    def _load(self) -> None:
+        if not self.path.exists():
+            return
+        with self.path.open("r", encoding="utf-8-sig", newline="") as handle:
+            reader = csv.DictReader(handle)
+            validate_kb_fieldnames(self.path, reader)
+            for row in reader:
+                normalized_row = normalize_kb_row({key: value or "" for key, value in row.items()})
+                normalized_name = normalize_search_text(normalized_row["merchant_name"])
+                if not normalized_name:
+                    continue
+                keyword_norms = {
+                    normalize_search_text(keyword)
+                    for keyword in split_kb_keywords(normalized_row["keywords"])
+                }
+                if normalized_name in self.row_index_by_normalized_name:
+                    existing_row = self.rows[self.row_index_by_normalized_name[normalized_name]]
+                    merged_keywords = split_kb_keywords(
+                        KEYWORD_SEPARATOR.join([existing_row["keywords"], normalized_row["keywords"]])
+                    )
+                    existing_row["keywords"] = KEYWORD_SEPARATOR.join(merged_keywords)
+                    if not existing_row["link"] and normalized_row["link"]:
+                        existing_row["link"] = normalized_row["link"]
+                    if not existing_row["category"] and normalized_row["category"]:
+                        existing_row["category"] = normalized_row["category"]
+                    if not existing_row["keyword_updated_at"] and normalized_row["keyword_updated_at"]:
+                        existing_row["keyword_updated_at"] = normalized_row["keyword_updated_at"]
+                    if not existing_row["category_updated_at"] and normalized_row["category_updated_at"]:
+                        existing_row["category_updated_at"] = normalized_row["category_updated_at"]
+                    self.keyword_norms_by_normalized_name[normalized_name].update(keyword_norms)
+                    continue
+                self.row_index_by_normalized_name[normalized_name] = len(self.rows)
+                self.keyword_norms_by_normalized_name[normalized_name] = set(keyword_norms)
+                self.rows.append(normalized_row)
 
     def append_ai_results(self, candidates: list[MerchantKBCandidate]) -> None:
         if not candidates:
             return
 
-        rows: list[dict[str, str]] = []
-        row_index_by_normalized_name: dict[str, int] = {}
-        keyword_norms_by_normalized_name: dict[str, set[str]] = {}
-
-        if self.path.exists():
-            with self.path.open("r", encoding="utf-8-sig", newline="") as handle:
-                reader = csv.DictReader(handle)
-                validate_kb_fieldnames(self.path, reader)
-                for row in reader:
-                    normalized_row = normalize_kb_row({key: value or "" for key, value in row.items()})
-                    normalized_name = normalize_search_text(normalized_row["merchant_name"])
-                    if not normalized_name:
-                        continue
-                    keyword_norms = {
-                        normalize_search_text(keyword)
-                        for keyword in split_kb_keywords(normalized_row["keywords"])
-                    }
-                    if normalized_name in row_index_by_normalized_name:
-                        existing_row = rows[row_index_by_normalized_name[normalized_name]]
-                        merged_keywords = split_kb_keywords(
-                            KEYWORD_SEPARATOR.join([existing_row["keywords"], normalized_row["keywords"]])
-                        )
-                        existing_row["keywords"] = KEYWORD_SEPARATOR.join(merged_keywords)
-                        if not existing_row["link"] and normalized_row["link"]:
-                            existing_row["link"] = normalized_row["link"]
-                        if not existing_row["category"] and normalized_row["category"]:
-                            existing_row["category"] = normalized_row["category"]
-                        if not existing_row["keyword_updated_at"] and normalized_row["keyword_updated_at"]:
-                            existing_row["keyword_updated_at"] = normalized_row["keyword_updated_at"]
-                        if not existing_row["category_updated_at"] and normalized_row["category_updated_at"]:
-                            existing_row["category_updated_at"] = normalized_row["category_updated_at"]
-                        keyword_norms_by_normalized_name[normalized_name].update(keyword_norms)
-                        continue
-                    row_index_by_normalized_name[normalized_name] = len(rows)
-                    keyword_norms_by_normalized_name[normalized_name] = set(keyword_norms)
-                    rows.append(normalized_row)
-
         timestamp = china_timestamp_now()
-        changed = False
         for candidate in candidates:
             merchant_name = normalize_space(candidate.merchant_name)
             keyword = normalize_space(candidate.keyword)
@@ -590,10 +592,10 @@ class MerchantKBUpdater:
             if not keywords_to_add:
                 continue
 
-            if normalized_name not in row_index_by_normalized_name:
-                row_index_by_normalized_name[normalized_name] = len(rows)
-                keyword_norms_by_normalized_name[normalized_name] = set()
-                rows.append(
+            if normalized_name not in self.row_index_by_normalized_name:
+                self.row_index_by_normalized_name[normalized_name] = len(self.rows)
+                self.keyword_norms_by_normalized_name[normalized_name] = set()
+                self.rows.append(
                     {
                         "merchant_name": merchant_name,
                         "keywords": "",
@@ -604,35 +606,34 @@ class MerchantKBUpdater:
                         "category_updated_at": "",
                     }
                 )
-            row = rows[row_index_by_normalized_name[normalized_name]]
-            existing_keyword_norms = keyword_norms_by_normalized_name[normalized_name]
+            row = self.rows[self.row_index_by_normalized_name[normalized_name]]
+            existing_keyword_norms = self.keyword_norms_by_normalized_name[normalized_name]
             existing_keywords = split_kb_keywords(row["keywords"])
-            row_changed = False
             for keyword_value, normalized_keyword in keywords_to_add:
                 if normalized_keyword in existing_keyword_norms:
                     continue
                 existing_keyword_norms.add(normalized_keyword)
                 existing_keywords.append(keyword_value)
-                row_changed = True
+                self._dirty = True
             if link and not row["link"]:
                 row["link"] = link
-                row_changed = True
-            if row_changed:
+                self._dirty = True
+            if self._dirty and existing_keywords != split_kb_keywords(row["keywords"]):
                 row["keywords"] = KEYWORD_SEPARATOR.join(existing_keywords)
                 row["keyword_updated_at"] = timestamp
-                changed = True
 
-        if not changed:
+    def save(self) -> None:
+        if not self._dirty:
             return
-
         self.path.parent.mkdir(parents=True, exist_ok=True)
         target_path = self.path.resolve()
         temp_path = target_path.with_name(f"{target_path.name}.{os.getpid()}.tmp")
         with temp_path.open("w", encoding="utf-8-sig", newline="") as handle:
             writer = csv.DictWriter(handle, fieldnames=KB_FIELDNAMES)
             writer.writeheader()
-            writer.writerows(normalize_kb_row(row) for row in rows)
+            writer.writerows(normalize_kb_row(row) for row in self.rows)
         temp_path.replace(target_path)
+        self._dirty = False
 
 
 class KeywordRowIndex:
@@ -934,11 +935,13 @@ def process_file(args: argparse.Namespace) -> None:
         cache_dirty = False
 
     merchant_kb_update_enabled = not args.skip_merchant_kb_update
+    merchant_kb_updater = MerchantKBUpdater(args.merchant_kb) if merchant_kb_update_enabled else None
 
     def flush_pending_merchant_kb() -> None:
-        if not merchant_kb_update_enabled or not pending_ai_kb_candidates:
+        if not merchant_kb_updater or not pending_ai_kb_candidates:
             return
-        MerchantKBUpdater(args.merchant_kb).append_ai_results(pending_ai_kb_candidates)
+        merchant_kb_updater.append_ai_results(pending_ai_kb_candidates)
+        merchant_kb_updater.save()
         pending_ai_kb_candidates.clear()
 
     def flush_checkpoint_on_exit() -> None:
