@@ -6,7 +6,7 @@ Behaviour
 ---------
 1. Only rows with an empty ``category`` are evaluated.
 2. Only a clear, high-confidence winner is written back to the KB.
-3. Conflicting, low-confidence, excluded and unmatched rows are left unchanged.
+3. Conflicting, excluded and unmatched rows are left unchanged.
 4. Existing categories and their source fields are always preserved.
 5. By default, ``merchant_kb.csv`` is updated atomically in place.
 6. No review queue, audit file or uncertain recommendation is produced.
@@ -22,8 +22,9 @@ Update merchant_kb.csv directly:
 Use another KB path:
     python classify_by_rules_high_confidence.py --merchant-kb data/merchant_kb.csv
 
-Use stricter thresholds:
-    python classify_by_rules_high_confidence.py --min-score 95 --min-margin 25
+High-confidence means an exact-name, exact-domain or curated strong-phrase
+rule matches. If more than one category matches, the row is treated as a
+conflict and left unchanged.
 """
 
 from __future__ import annotations
@@ -35,7 +36,7 @@ import re
 import sys
 import unicodedata
 from collections import Counter, defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Iterable, Sequence
@@ -50,7 +51,7 @@ from datetime import datetime
 
 DEFAULT_MERCHANT_KB = Path("merchant_kb.csv")
 KEYWORD_SEPARATOR = "|"
-RULE_VERSION = "merchant_rules_v2.1_high_confidence_20260729"
+RULE_VERSION = "merchant_rules_v3.1_exact_strong_only_20260729"
 
 ALLOWED_CATEGORIES = {
     "Automotive",
@@ -98,16 +99,8 @@ DEFAULT_OUTPUT_FIELDS = [
 ]
 
 
-# Evidence weights. A single strong phrase in the merchant name can classify;
-# a website keyword normally needs corroborating evidence.
-WEIGHT_EXACT_NAME = 100
-WEIGHT_EXACT_DOMAIN = 100
-WEIGHT_STRONG_NAME = 85
-WEIGHT_STRONG_DOMAIN = 75
-WEIGHT_STRONG_KEYWORD = 60
-WEIGHT_WEAK_NAME = 45
-WEIGHT_WEAK_DOMAIN = 35
-WEIGHT_WEAK_KEYWORD = 20
+# Only curated high-confidence evidence is supported: exact merchant names,
+# exact domains and strong phrases. There is no numeric ranking or threshold.
 
 BUSINESS_SUFFIXES = (
     "proprietary limited",
@@ -160,9 +153,6 @@ class Rule:
     ``strong``
         Highly indicative phrases. A merchant-name match is usually enough.
 
-    ``weak``
-        Supporting phrases that should not classify on their own.
-
     ``required_any``
         At least one phrase must appear anywhere in the merchant context.
 
@@ -178,11 +168,9 @@ class Rule:
     exact_names: tuple[str, ...] = ()
     exact_domains: tuple[str, ...] = ()
     strong: tuple[str, ...] = ()
-    weak: tuple[str, ...] = ()
     required_any: tuple[str, ...] = ()
     required_all: tuple[str, ...] = ()
     excludes: tuple[str, ...] = ()
-    score_adjustment: int = 0
 
 
 @dataclass(frozen=True)
@@ -208,24 +196,21 @@ class Evidence:
     field: str
     phrase: str
     strength: str
-    weight: int
 
     def display(self) -> str:
-        return f"{self.field}:{self.phrase}({self.strength},{self.weight})"
+        return f"{self.field}:{self.phrase}({self.strength})"
 
 
 @dataclass(frozen=True)
 class RuleMatch:
     rule_name: str
     category: str
-    score: int
     evidence: tuple[Evidence, ...]
 
 
 @dataclass(frozen=True)
 class CategoryCandidate:
     category: str
-    score: int
     rule_matches: tuple[RuleMatch, ...]
 
     @property
@@ -249,8 +234,6 @@ class CategoryCandidate:
 class Decision:
     status: str
     category: str = ""
-    score: int = 0
-    margin: int = 0
     winning_rule: str = ""
     candidates: tuple[CategoryCandidate, ...] = ()
     evidence: tuple[Evidence, ...] = ()
@@ -269,11 +252,9 @@ def R(
     exact_names: Sequence[str] = (),
     exact_domains: Sequence[str] = (),
     strong: Sequence[str] = (),
-    weak: Sequence[str] = (),
     required_any: Sequence[str] = (),
     required_all: Sequence[str] = (),
     excludes: Sequence[str] = (),
-    score_adjustment: int = 0,
 ) -> Rule:
     """Compact rule-construction helper."""
 
@@ -283,11 +264,9 @@ def R(
         exact_names=tuple(exact_names),
         exact_domains=tuple(exact_domains),
         strong=tuple(strong),
-        weak=tuple(weak),
         required_any=tuple(required_any),
         required_all=tuple(required_all),
         excludes=tuple(excludes),
-        score_adjustment=score_adjustment,
     )
 
 
@@ -334,7 +313,6 @@ RULES: tuple[Rule, ...] = (
             "dog daycare",
             "pet daycare",
         ),
-        weak=("kennel",),
     ),
     R(
         "pet_retail",
@@ -386,7 +364,6 @@ RULES: tuple[Rule, ...] = (
             "public school",
             "montessori school",
         ),
-        weak=("college", "academy"),
     ),
     R(
         "education_tertiary",
@@ -464,7 +441,6 @@ RULES: tuple[Rule, ...] = (
             "roof restoration",
             "roof repairs",
         ),
-        weak=("builder", "construction"),
     ),
     R(
         "home_surfaces",
@@ -479,7 +455,6 @@ RULES: tuple[Rule, ...] = (
             "glazier",
             "glass glazing",
         ),
-        weak=("tiling", "flooring"),
     ),
     R(
         "home_landscape_garden",
@@ -501,7 +476,6 @@ RULES: tuple[Rule, ...] = (
         "home_pest",
         "Home Improvement",
         strong=("pest control", "termite control", "termite inspection"),
-        weak=("termite",),
     ),
     R(
         "home_renovation",
@@ -520,14 +494,12 @@ RULES: tuple[Rule, ...] = (
         "home_painting",
         "Home Improvement",
         strong=("painting contractor", "house painter", "painting service"),
-        weak=("painter", "painters"),
         excludes=("artist", "portrait", "gallery"),
     ),
     R(
         "home_fencing",
         "Home Improvement",
         strong=("fencing contractor", "fence installer", "pool fencing"),
-        weak=("fencing",),
         excludes=("fencing club", "fencing academy", "fencing sport"),
     ),
     R(
@@ -536,7 +508,6 @@ RULES: tuple[Rule, ...] = (
         exact_names=("bunnings", "bunnings warehouse", "mitre 10", "home hardware"),
         exact_domains=("bunnings.com.au",),
         strong=("hardware store", "building supplies", "building materials"),
-        weak=("hardware",),
         required_any=(
             "tools",
             "building supplies",
@@ -567,7 +538,6 @@ RULES: tuple[Rule, ...] = (
             "car servicing",
             "logbook service",
         ),
-        weak=("mechanic",),
     ),
     R(
         "automotive_smash_repair",
@@ -592,7 +562,6 @@ RULES: tuple[Rule, ...] = (
             "tyre and auto",
             "wheel alignment",
         ),
-        weak=("tyres", "tires"),
     ),
     R(
         "automotive_specialist",
@@ -633,7 +602,6 @@ RULES: tuple[Rule, ...] = (
         "automotive_fuel",
         "Automotive",
         strong=("petrol station", "fuel station", "service station"),
-        weak=("petrol", "fuel"),
     ),
 
     # -------------------------------------------------------------------------
@@ -650,7 +618,6 @@ RULES: tuple[Rule, ...] = (
             "hair salon",
             "hair studio",
         ),
-        weak=("barber", "barbers"),
     ),
     R(
         "personal_beauty",
@@ -668,13 +635,11 @@ RULES: tuple[Rule, ...] = (
             "brow bar",
             "eyelash studio",
         ),
-        weak=("waxing", "nails"),
     ),
     R(
         "personal_massage",
         "Personal Care",
         strong=("massage centre", "massage center", "massage spa", "massage therapy"),
-        weak=("massage",),
         excludes=("physiotherapy", "chiropractic", "medical", "hospital"),
     ),
     R(
@@ -687,7 +652,6 @@ RULES: tuple[Rule, ...] = (
             "coin laundry",
             "laundrette",
         ),
-        weak=("laundry",),
     ),
     R(
         "personal_tattoo",
@@ -748,7 +712,6 @@ RULES: tuple[Rule, ...] = (
             "greengrocer",
             "delicatessen",
         ),
-        weak=("butcher", "deli", "seafood"),
         excludes=("restaurant", "cafe", "takeaway"),
     ),
     R(
@@ -769,7 +732,6 @@ RULES: tuple[Rule, ...] = (
         "grocery_bakery",
         "Groceries",
         strong=("retail bakery", "bread shop", "artisan bakery"),
-        weak=("bakery",),
         excludes=("bakery cafe", "cafe", "restaurant", "coffee"),
     ),
 
@@ -802,7 +764,6 @@ RULES: tuple[Rule, ...] = (
             "gymnasium",
             "personal training studio",
         ),
-        weak=("gym", "fitness"),
         excludes=("fitness equipment", "fitness clothing", "fitness retailer"),
     ),
     R(
@@ -822,7 +783,6 @@ RULES: tuple[Rule, ...] = (
             "judo club",
             "kung fu",
         ),
-        weak=("pilates", "crossfit"),
     ),
     R(
         "gym_membership",
@@ -866,13 +826,11 @@ RULES: tuple[Rule, ...] = (
             "powerball",
             "ozlotteries",
         ),
-        weak=("lottery", "lotto"),
     ),
     R(
         "gambling_casino",
         "Gambling",
         strong=("online casino", "casino gaming", "poker machines", "pokies"),
-        weak=("casino",),
         excludes=("casino hotel", "casino resort"),
     ),
 
@@ -895,7 +853,6 @@ RULES: tuple[Rule, ...] = (
             "income protection insurance",
             "underwriting agency",
         ),
-        weak=("insurance", "insurer", "underwriting"),
     ),
     R(
         "insurance_brands",
@@ -952,7 +909,6 @@ RULES: tuple[Rule, ...] = (
             "nbn provider",
             "mobile network",
         ),
-        weak=("telecommunications", "telecom", "broadband"),
         excludes=("telecom equipment", "phone accessories", "mobile phone repair"),
     ),
 
@@ -996,7 +952,6 @@ RULES: tuple[Rule, ...] = (
             "not for profit charity",
             "non profit charity",
         ),
-        weak=("donation", "charity", "fundraising"),
     ),
 
     # -------------------------------------------------------------------------
@@ -1063,7 +1018,6 @@ RULES: tuple[Rule, ...] = (
             "property management",
             "real estate rent",
         ),
-        weak=("real estate",),
     ),
     R(
         "rent_storage",
@@ -1087,7 +1041,6 @@ RULES: tuple[Rule, ...] = (
         exact_names=("uber", "didi", "ola cabs", "13cabs", "silver service taxi"),
         exact_domains=("uber.com",),
         strong=("taxi service", "taxi company", "rideshare", "ride sharing"),
-        weak=("taxi", "taxis", "cab", "cabs"),
         excludes=("uber eats", "food delivery", "taxi truck"),
     ),
     R(
@@ -1095,7 +1048,6 @@ RULES: tuple[Rule, ...] = (
         "Transport",
         exact_names=("linkt", "citylink"),
         strong=("toll road", "road toll", "e toll", "e-toll", "car parking", "parking station"),
-        weak=("parking",),
     ),
     R(
         "transport_public",
@@ -1121,7 +1073,6 @@ RULES: tuple[Rule, ...] = (
             "transport logistics",
             "shipping company",
         ),
-        weak=("freight", "courier", "couriers", "logistics"),
         excludes=("software logistics", "logistics consulting"),
     ),
     R(
@@ -1134,7 +1085,6 @@ RULES: tuple[Rule, ...] = (
             "moving company",
             "moving service",
         ),
-        weak=("removals", "movers"),
     ),
     R(
         "transport_vehicle_rental",
@@ -1188,7 +1138,6 @@ RULES: tuple[Rule, ...] = (
             "backpacker hostel",
             "bed and breakfast",
         ),
-        weak=("hotel", "motel", "resort", "hostel", "backpackers"),
         excludes=("casino", "restaurant", "hotel supplies"),
     ),
     R(
@@ -1224,7 +1173,6 @@ RULES: tuple[Rule, ...] = (
             "dendy cinemas",
         ),
         strong=("movie cinema", "cinema complex", "movie theatre", "movie theater"),
-        weak=("cinema", "cinemas", "cineplex"),
     ),
     R(
         "entertainment_attraction",
@@ -1243,7 +1191,6 @@ RULES: tuple[Rule, ...] = (
             "paintball centre",
             "paintball center",
         ),
-        weak=("museum", "zoo", "aquarium", "trampoline", "paintball"),
     ),
     R(
         "entertainment_performance",
@@ -1260,7 +1207,6 @@ RULES: tuple[Rule, ...] = (
             "bowling alley",
             "tenpin bowling",
         ),
-        weak=("theatre", "theater", "bowling"),
     ),
     R(
         "entertainment_ticketing",
@@ -1335,7 +1281,6 @@ RULES: tuple[Rule, ...] = (
             "gelato shop",
             "ice creamery",
         ),
-        weak=("cafe", "pizza", "sushi", "takeaway", "gelato"),
     ),
 
     # -------------------------------------------------------------------------
@@ -1369,7 +1314,6 @@ RULES: tuple[Rule, ...] = (
         "Health",
         exact_names=("chemist warehouse", "priceline pharmacy"),
         strong=("pharmacy", "community pharmacy", "discount chemist"),
-        weak=("chemist",),
     ),
     R(
         "health_dental",
@@ -1383,7 +1327,6 @@ RULES: tuple[Rule, ...] = (
             "periodontist",
             "oral surgeon",
         ),
-        weak=("dental",),
     ),
     R(
         "health_allied",
@@ -1412,7 +1355,6 @@ RULES: tuple[Rule, ...] = (
             "dietician",
             "allied health",
         ),
-        weak=("physio", "acupuncture"),
     ),
     R(
         "health_medical_clinic",
@@ -1427,7 +1369,6 @@ RULES: tuple[Rule, ...] = (
             "day surgery",
             "ambulance service",
         ),
-        weak=("hospital", "surgery"),
         excludes=(
             "animal hospital",
             "vet hospital",
@@ -1445,7 +1386,6 @@ RULES: tuple[Rule, ...] = (
             "pathology laboratory",
             "medical pathology",
         ),
-        weak=("radiology", "pathology"),
     ),
     R(
         "health_specialist",
@@ -1540,7 +1480,6 @@ RULES: tuple[Rule, ...] = (
             "consumer lender",
             "payday lender",
         ),
-        weak=("bank", "lender", "financial services", "finance company"),
         excludes=(
             "food bank",
             "blood bank",
@@ -1628,7 +1567,6 @@ RULES: tuple[Rule, ...] = (
         "retail_general",
         "Retail",
         strong=("online retailer", "specialty retailer", "retail store"),
-        weak=("retail", "shop", "store"),
         excludes=(
             "pet store",
             "pet shop",
@@ -1659,7 +1597,6 @@ RULES: tuple[Rule, ...] = (
             "market information service",
             "data information service",
         ),
-        weak=("newspaper", "publisher", "publishing", "news media"),
         excludes=("book store", "music publisher", "video production"),
     ),
     R(
@@ -1672,7 +1609,6 @@ RULES: tuple[Rule, ...] = (
             "business directory service",
             "research database",
         ),
-        weak=("information services",),
     ),
 
     # -------------------------------------------------------------------------
@@ -1732,7 +1668,6 @@ RULES: tuple[Rule, ...] = (
             "electricity distributor",
             "utility provider",
         ),
-        weak=("electricity bill", "gas bill", "water bill", "utilities"),
         excludes=(
             "solar installer",
             "electrical contractor",
@@ -1774,7 +1709,6 @@ class CompiledRule:
     exact_names: tuple[tuple[str, str, str], ...]
     exact_domains: tuple[tuple[str, str], ...]
     strong: tuple[tuple[str, str], ...]
-    weak: tuple[tuple[str, str], ...]
     required_any: tuple[tuple[str, str], ...]
     required_all: tuple[tuple[str, str], ...]
     excludes: tuple[tuple[str, str], ...]
@@ -2028,7 +1962,7 @@ def validate_rules(rules: Sequence[Rule]) -> None:
             raise ValueError(
                 f"Rule {rule.name!r} uses unknown category {rule.category!r}."
             )
-        if not any((rule.exact_names, rule.exact_domains, rule.strong, rule.weak)):
+        if not any((rule.exact_names, rule.exact_domains, rule.strong)):
             raise ValueError(f"Rule {rule.name!r} has no matching evidence.")
 
 
@@ -2088,7 +2022,6 @@ def _build_rule_engine(rules: Sequence[Rule]) -> RuleEngine:
         exact_names = _compile_exact_names(rule.exact_names)
         exact_domains = _compile_exact_domains(rule.exact_domains)
         strong = _compile_phrase_pairs(rule.strong)
-        weak = _compile_phrase_pairs(rule.weak)
         required_any = _compile_phrase_pairs(rule.required_any)
         required_all = _compile_phrase_pairs(rule.required_all)
         excludes = _compile_phrase_pairs(rule.excludes)
@@ -2099,16 +2032,14 @@ def _build_rule_engine(rules: Sequence[Rule]) -> RuleEngine:
                 exact_names=exact_names,
                 exact_domains=exact_domains,
                 strong=strong,
-                weak=weak,
                 required_any=required_any,
                 required_all=required_all,
                 excludes=excludes,
             )
         )
 
-        # A rule can only produce evidence when an exact value or one of its
-        # strong/weak phrases is present. Indexing these signals avoids scanning
-        # every rule for every merchant.
+        # A rule can only match when an exact value or strong phrase is present.
+        # Indexing these signals avoids scanning every rule for every merchant.
         for _, normalized, compact in exact_names:
             exact_name_index_work[normalized].add(rule_index)
             if compact:
@@ -2117,7 +2048,7 @@ def _build_rule_engine(rules: Sequence[Rule]) -> RuleEngine:
         for _, normalized in exact_domains:
             exact_domain_index_work[normalized].add(rule_index)
 
-        for _, normalized in (*strong, *weak):
+        for _, normalized in strong:
             for token in normalized.split():
                 token_index_work[token].add(rule_index)
 
@@ -2161,62 +2092,28 @@ def _candidate_rule_indexes(
 
 
 def _deduplicate_evidence(items: Iterable[Evidence]) -> tuple[Evidence, ...]:
+    """Deduplicate deterministic evidence for logging and diagnostics."""
+
+    strength_rank = {"exact": 2, "strong": 1}
     best: dict[tuple[str, str], Evidence] = {}
-    normalized_by_id: dict[int, str] = {}
 
     for item in items:
         normalized = normalize_text(item.phrase)
-        normalized_by_id[id(item)] = normalized
         key = (item.field, normalized)
         previous = best.get(key)
-        if previous is None or item.weight > previous.weight:
+        if previous is None or strength_rank[item.strength] > strength_rank[previous.strength]:
             best[key] = item
 
     return tuple(
         sorted(
             best.values(),
             key=lambda item: (
-                -item.weight,
+                -strength_rank[item.strength],
                 item.field,
-                normalized_by_id.get(id(item), normalize_text(item.phrase)),
+                normalize_text(item.phrase),
             ),
         )
     )
-
-
-def _score_evidence(evidence: Sequence[Evidence], score_adjustment: int) -> int:
-    if not evidence:
-        return 0
-
-    ordered = sorted(evidence, key=lambda item: item.weight, reverse=True)
-    score = ordered[0].weight
-
-    # Additional independent evidence is useful, but never as valuable as the
-    # strongest signal. This avoids keyword-heavy web pages inflating scores.
-    seen_phrases = {normalize_text(ordered[0].phrase)}
-    for item in ordered[1:]:
-        phrase_norm = normalize_text(item.phrase)
-        if phrase_norm in seen_phrases:
-            continue
-        seen_phrases.add(phrase_norm)
-        if item.weight >= 85:
-            score += 15
-        elif item.weight >= 60:
-            score += 12
-        elif item.weight >= 35:
-            score += 8
-        else:
-            score += 4
-
-    # Evidence from more than one source is more trustworthy.
-    fields = {item.field for item in ordered}
-    if len(fields) >= 2:
-        score += 5
-    if len(fields) >= 3:
-        score += 5
-
-    score += score_adjustment
-    return max(0, min(100, score))
 
 
 def _compiled_exact_name_matches(
@@ -2238,6 +2135,8 @@ def _compiled_exact_domain_matches(hostname: str, expected: str) -> bool:
 
 
 def evaluate_rule(rule: CompiledRule, context: MerchantContext) -> RuleMatch | None:
+    """Return a match only when a curated high-confidence rule is satisfied."""
+
     if any(
         _phrase_in_search(context.combined_search, normalized)
         for _, normalized in rule.excludes
@@ -2248,18 +2147,14 @@ def evaluate_rule(rule: CompiledRule, context: MerchantContext) -> RuleMatch | N
 
     for original, normalized, compact in rule.exact_names:
         if _compiled_exact_name_matches(context, normalized, compact):
-            evidence.append(
-                Evidence("merchant_name", original, "exact", WEIGHT_EXACT_NAME)
-            )
+            evidence.append(Evidence("merchant_name", original, "exact"))
 
     for original, normalized in rule.exact_domains:
         if _compiled_exact_domain_matches(context.hostname, normalized):
-            evidence.append(
-                Evidence("domain", original, "exact", WEIGHT_EXACT_DOMAIN)
-            )
+            evidence.append(Evidence("domain", original, "exact"))
 
-    # Exact merchant/domain matches are allowed to bypass supporting conditions.
-    # The conditions mainly protect generic phrases such as "hardware".
+    # Exact merchant/domain matches bypass supporting conditions. Conditions
+    # mainly protect otherwise generic strong phrases such as "hardware".
     has_exact_evidence = bool(evidence)
     if not has_exact_evidence:
         if rule.required_any and not any(
@@ -2276,81 +2171,45 @@ def evaluate_rule(rule: CompiledRule, context: MerchantContext) -> RuleMatch | N
 
     for original, normalized in rule.strong:
         if _phrase_in_search(context.name_search, normalized):
-            evidence.append(
-                Evidence("merchant_name", original, "strong", WEIGHT_STRONG_NAME)
-            )
+            evidence.append(Evidence("merchant_name", original, "strong"))
         if _phrase_in_search(context.domain_search, normalized):
-            evidence.append(
-                Evidence("domain", original, "strong", WEIGHT_STRONG_DOMAIN)
-            )
+            evidence.append(Evidence("domain", original, "strong"))
         if _phrase_in_search(context.keywords_search, normalized):
-            evidence.append(
-                Evidence("keywords", original, "strong", WEIGHT_STRONG_KEYWORD)
-            )
-
-    for original, normalized in rule.weak:
-        if _phrase_in_search(context.name_search, normalized):
-            evidence.append(
-                Evidence("merchant_name", original, "weak", WEIGHT_WEAK_NAME)
-            )
-        if _phrase_in_search(context.domain_search, normalized):
-            evidence.append(
-                Evidence("domain", original, "weak", WEIGHT_WEAK_DOMAIN)
-            )
-        if _phrase_in_search(context.keywords_search, normalized):
-            evidence.append(
-                Evidence("keywords", original, "weak", WEIGHT_WEAK_KEYWORD)
-            )
+            evidence.append(Evidence("keywords", original, "strong"))
 
     unique_evidence = _deduplicate_evidence(evidence)
     if not unique_evidence:
         return None
 
-    score = _score_evidence(unique_evidence, rule.original.score_adjustment)
     return RuleMatch(
         rule_name=rule.original.name,
         category=rule.original.category,
-        score=score,
         evidence=unique_evidence,
     )
 
 
-def aggregate_candidates(rule_matches: Sequence[RuleMatch]) -> tuple[CategoryCandidate, ...]:
+def aggregate_candidates(
+    rule_matches: Sequence[RuleMatch],
+) -> tuple[CategoryCandidate, ...]:
     grouped: dict[str, list[RuleMatch]] = defaultdict(list)
     for match in rule_matches:
         grouped[match.category].append(match)
 
-    candidates: list[CategoryCandidate] = []
-    for category, matches in grouped.items():
-        ordered = sorted(matches, key=lambda item: (-item.score, item.rule_name))
-        # A second independent rule in the same category can strengthen the
-        # result, but the bonus is intentionally small.
-        score = ordered[0].score + min(10, 5 * (len(ordered) - 1))
-        candidates.append(
-            CategoryCandidate(
-                category=category,
-                score=min(100, score),
-                rule_matches=tuple(ordered),
-            )
+    return tuple(
+        CategoryCandidate(
+            category=category,
+            rule_matches=tuple(sorted(matches, key=lambda item: item.rule_name)),
         )
+        for category, matches in sorted(grouped.items())
+    )
 
-    return tuple(sorted(candidates, key=lambda item: (-item.score, item.category)))
 
+def classify_context(context: MerchantContext) -> Decision:
+    """Classify only when exactly one category matches high-confidence rules.
 
-def classify_context(
-    context: MerchantContext,
-    *,
-    min_score: int,
-    min_margin: int,
-) -> Decision:
-    """Return an automatic classification only for a clear winner.
-
-    A row is automatically classified when all of the following hold:
-    - the best category score reaches ``min_score``;
-    - no second category also reaches ``min_score``; and
-    - the best category leads the runner-up by at least ``min_margin``.
-
-    Every other outcome is ignored by the KB update process.
+    - No matched category: leave unchanged.
+    - One matched category: write the category.
+    - Multiple matched categories: treat as conflict and leave unchanged.
     """
 
     engine = get_rule_engine()
@@ -2372,43 +2231,22 @@ def classify_context(
     if not candidates:
         return Decision(status="NO_MATCH")
 
-    winner = candidates[0]
-    second_score = candidates[1].score if len(candidates) > 1 else 0
-    margin = winner.score - second_score
-
-    # Conservative conflict definition:
-    # 1. another category is independently high-confidence; or
-    # 2. the winning category does not lead by enough points.
-    competing_high_confidence = len(candidates) > 1 and second_score >= min_score
-    insufficient_margin = len(candidates) > 1 and margin < min_margin
-    conflict = competing_high_confidence or insufficient_margin
-
-    evidence = winner.evidence
-    winning_rule = winner.rule_matches[0].rule_name if winner.rule_matches else ""
-
-    if winner.score >= min_score and not conflict:
+    if len(candidates) > 1:
         return Decision(
-            status="AUTO_CLASSIFIED",
-            category=winner.category,
-            score=winner.score,
-            margin=margin,
-            winning_rule=winning_rule,
+            status="IGNORED_CONFLICT",
             candidates=candidates,
-            evidence=evidence,
-            conflict=False,
+            conflict=True,
         )
 
+    winner = candidates[0]
+    winning_match = winner.rule_matches[0]
     return Decision(
-        status="IGNORED_CONFLICT" if conflict else "IGNORED_LOW_CONFIDENCE",
-        # The candidate is retained only for internal logging. It is never
-        # written to the merchant KB when the decision is ignored.
+        status="AUTO_CLASSIFIED",
         category=winner.category,
-        score=winner.score,
-        margin=margin,
-        winning_rule=winning_rule,
+        winning_rule=winning_match.rule_name,
         candidates=candidates,
-        evidence=evidence,
-        conflict=conflict,
+        evidence=winner.evidence,
+        conflict=False,
     )
 
 
@@ -2491,11 +2329,7 @@ def process_kb(args: argparse.Namespace) -> dict[str, int]:
 
             stats["empty_category"] += 1
             context = build_context(row)
-            decision = classify_context(
-                context,
-                min_score=args.min_score,
-                min_margin=args.min_margin,
-            )
+            decision = classify_context(context)
             stats[decision.status] += 1
 
             if decision.status == "AUTO_CLASSIFIED":
@@ -2509,16 +2343,14 @@ def process_kb(args: argparse.Namespace) -> dict[str, int]:
                 if args.verbose:
                     print(
                         "  UPDATE "
-                        f"score={decision.score:<3} "
-                        f"margin={decision.margin:<3} "
                         f"category={decision.category!r:<30} "
                         f"merchant={context.merchant_name_raw!r} "
                         f"rule={decision.winning_rule!r}",
                         flush=True,
                     )
 
-            # For conflicts, low-confidence cases, excluded rows and no-match
-            # rows, the original row is written back without any classification.
+            # Conflicts, excluded rows and no-match rows are written back
+            # without any classification.
             if output_writer is not None:
                 row.setdefault("category_source", "")
                 output_writer.writerow(row)
@@ -2526,7 +2358,6 @@ def process_kb(args: argparse.Namespace) -> dict[str, int]:
             if args.progress_every > 0 and stats["total"] % args.progress_every == 0:
                 ignored = (
                     stats["IGNORED_CONFLICT"]
-                    + stats["IGNORED_LOW_CONFIDENCE"]
                     + stats["NO_MATCH"]
                     + stats["GLOBAL_SKIP"]
                 )
@@ -2561,7 +2392,6 @@ def process_kb(args: argparse.Namespace) -> dict[str, int]:
 
     ignored_count = (
         stats["IGNORED_CONFLICT"]
-        + stats["IGNORED_LOW_CONFIDENCE"]
         + stats["NO_MATCH"]
         + stats["GLOBAL_SKIP"]
     )
@@ -2572,10 +2402,6 @@ def process_kb(args: argparse.Namespace) -> dict[str, int]:
     print(f"  empty category         : {stats['empty_category']}", flush=True)
     print(f"  KB categories updated  : {stats['AUTO_CLASSIFIED']}", flush=True)
     print(f"  ignored conflicts      : {stats['IGNORED_CONFLICT']}", flush=True)
-    print(
-        f"  ignored low confidence : {stats['IGNORED_LOW_CONFIDENCE']}",
-        flush=True,
-    )
     print(f"  ignored no match       : {stats['NO_MATCH']}", flush=True)
     print(f"  ignored global skip    : {stats['GLOBAL_SKIP']}", flush=True)
     print(f"  total ignored          : {ignored_count}", flush=True)
@@ -2599,17 +2425,6 @@ def process_kb(args: argparse.Namespace) -> dict[str, int]:
 
     return dict(stats)
 
-
-def bounded_int(minimum: int, maximum: int):
-    def parser(value: str) -> int:
-        parsed = int(value)
-        if not minimum <= parsed <= maximum:
-            raise argparse.ArgumentTypeError(
-                f"value must be between {minimum} and {maximum}"
-            )
-        return parsed
-
-    return parser
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -2643,21 +2458,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--verbose",
         action="store_true",
         help="Print each high-confidence category update.",
-    )
-    parser.add_argument(
-        "--min-score",
-        type=bounded_int(0, 100),
-        default=85,
-        help="Minimum winning score required to update the KB (default: 85).",
-    )
-    parser.add_argument(
-        "--min-margin",
-        type=bounded_int(0, 100),
-        default=20,
-        help=(
-            "Minimum score lead over the second category required to update "
-            "the KB (default: 20)."
-        ),
     )
     parser.add_argument(
         "--progress-every",
