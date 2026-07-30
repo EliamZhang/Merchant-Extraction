@@ -202,8 +202,8 @@ class MerchantCategoryPromptConfig:
             "Classify each merchant by its actual, real-world business activity, not by a superficial reading of its name. "
             # 不需要完美匹配；当某个类别明显更合理时选最接近的分类。
             "A perfect match is not required; choose the closest category when one is clearly more defensible than the others. "
-            # 仅在证据太弱或冲突时返回空字符串。
-            "Use an empty string only when evidence is too weak or conflicting.\n"
+            # 仅在证据太弱时空字符串。
+            "Use an empty string only when evidence is too weak.\n"
             # 分类指南：
             "Category guide:\n"
             # 汽车：燃油、车辆销售、维修、零部件、洗车、道路救援服务。
