@@ -196,7 +196,7 @@ class MerchantCategoryPromptConfig:
         return (
             # 你正在从商户知识库中对商户进行分类。
             "You are classifying merchants from a merchant knowledge base.\n"
-            # 根据商户真实的、实际经营的业务来分类，而不是看名字表面意思，。仅在需要时使用网络搜索。
+            # 根据商户真实的、实际经营的业务来分类，而不是看名字表面意思。仅在需要时使用网络搜索。
             "Classify each merchant by its actual, real-world business activity, not by a superficial reading of its name. Use web search only when needed.\n"
             # 不需要完美匹配；当某个类别明显更合理时选最接近的分类。
             "A perfect match is not required; choose the closest category when one is clearly more defensible than the others. "
