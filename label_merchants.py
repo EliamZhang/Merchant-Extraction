@@ -196,14 +196,12 @@ class MerchantCategoryPromptConfig:
         return (
             # 你正在从商户知识库中对商户进行分类。
             "You are classifying merchants from a merchant knowledge base.\n"
-            # 使用所有可用证据识别商户的商品、服务或经营活动；关键词和链接可作为强信号。仅在需要时使用网络搜索。
-            "Use all evidence to identify the merchant's goods, services, or activity; keywords and link can be strong signals. Use web search only when needed.\n"
-            # 根据商户真实的、实际经营的业务来分类，而不是看名字表面意思。
-            "Classify each merchant by its actual, real-world business activity, not by a superficial reading of its name. "
+            # 根据商户真实的、实际经营的业务来分类，而不是看名字表面意思，。仅在需要时使用网络搜索。
+            "Classify each merchant by its actual, real-world business activity, not by a superficial reading of its name. Use web search only when needed.\n"
             # 不需要完美匹配；当某个类别明显更合理时选最接近的分类。
             "A perfect match is not required; choose the closest category when one is clearly more defensible than the others. "
-            # 仅在证据太弱时空字符串。
-            "Use an empty string only when evidence is too weak.\n"
+            # 分不出来的时候空字符串。
+            "Use an empty string when the category cannot be determined.\n"
             # 分类指南：
             "Category guide:\n"
             # 汽车：燃油、车辆销售、维修、零部件、洗车、道路救援服务。
