@@ -378,15 +378,37 @@ class DeepSeekClient:
         prefix_hint: str = "",
     ) -> MerchantDecision:
         prompt = self.prompt_config.build_user_prompt(text_value, prefix_hint)
-        message = self._chat_completion(prompt)
-        return self.response_validator.parse(text_value, message)
+        last_error = None
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                message = self._chat_completion(prompt)
+                return self.response_validator.parse(text_value, message)
+            except (ValueError, json.JSONDecodeError) as exc:
+                last_error = exc
+            if attempt >= self.max_retries:
+                break
+            time.sleep(self.retry_delay_seconds * attempt)
+        raise RuntimeError(
+            f"Merchant verification failed after {self.max_retries} retries: {last_error}"
+        )
 
     def verify_merchant_batch(self, items: list[dict[str, str]]) -> dict[str, MerchantDecision]:
         if not items:
             return {}
         prompt = self.prompt_config.build_batch_user_prompt(items)
-        message = self._chat_completion(prompt)
-        return self.response_validator.parse_batch(items, message)
+        last_error = None
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                message = self._chat_completion(prompt)
+                return self.response_validator.parse_batch(items, message)
+            except (ValueError, json.JSONDecodeError) as exc:
+                last_error = exc
+            if attempt >= self.max_retries:
+                break
+            time.sleep(self.retry_delay_seconds * attempt)
+        raise RuntimeError(
+            f"Batch verification failed after {self.max_retries} retries: {last_error}"
+        )
 
     def _chat_completion(self, prompt: str) -> str:
         body: dict[str, Any] = {
