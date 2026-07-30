@@ -194,51 +194,79 @@ class MerchantCategoryPromptConfig:
             for item in items
         ]
         return (
+            # 你正在从商户知识库中对商户进行分类。
             "You are classifying merchants from a merchant knowledge base.\n"
-            "Use all available evidence, with merchant_name as the starting point. Keywords and link can provide strong category signals.\n"
-            "Use web search when needed to confirm uncertain merchants with an official website or reliable business listings.\n"
-            "Classify by the merchant's apparent goods, services, or business activity, not by whether it is consumer-facing or B2B. "
-            "A perfect match is not required; use the closest sensible allowed category when one category is slightly more likely and defensible. "
-            "Use an empty string only when the name is too generic, evidence is conflicting, the merchant is only a holding/investment entity, or no category is reasonably defensible.\n"
-            "Category definitions:\n"
-            "- Automotive: fuel, vehicle sales, car repair, auto parts, car washes, roadside and vehicle services.\n"
-            "- Department Stores: large mixed-retail stores, discount stores, supercentres, and department-store chains.\n"
-            "- Dining Out: restaurants, cafes, pubs, bars, fast food, food delivery, catering, and prepared meal services.\n"
-            "- Donations: charities, non-profits, fundraising, religious giving, and donation payments.\n"
-            "- Education: childcare, daycare, preschool, schools, universities, tutoring, training, and learning services.\n"
-            "- Entertainment: cinemas, theatres, museums, zoos, galleries, attractions, events, clubs, music, games, and leisure venues.\n"
-            "- Financial Institutions: banks, credit unions, lenders, mortgage providers, payment providers, investment firms, and brokers.\n"
-            "- Gambling: casinos, betting, wagering, lotteries, and gaming venues.\n"
-            "- Groceries: supermarkets, food shops, bakeries, butchers, seafood, liquor, bottle shops, food suppliers, wholesalers, and processors.\n"
-            "- Gyms and other memberships: gyms, fitness centres, yoga, pilates, sports training, personal trainers, and membership clubs.\n"
-            "- Health: pharmacies, chemists, dentists, optometrists, physiotherapists, clinics, hospitals, and healthcare providers.\n"
-            "- Home Improvement: builders, trades, construction, electricians, plumbers, roofers, painters, hardware, cleaning, repairs, and maintenance.\n"
-            "- Information: software, IT services, computer services, online platforms, media, publishing, data, consulting, marketing, and advisory services.\n"
-            "- Insurance: insurers, insurance brokers, policies, claims, and warranty providers.\n"
-            "- Personal Care: hair, beauty, nails, spas, grooming, laundry, dry cleaning, tailoring, photography, and personal services.\n"
-            "- Pet Care: veterinarians, animal hospitals, pet shops, pet food, grooming, boarding, and pet services.\n"
-            "- Rent: rent, leases, property managers, real estate agencies, rental agencies, storage units, and self-storage.\n"
-            "- Retail: clothing, shoes, jewellery, books, florists, gifts, newsagents, electronics, specialty goods, and non-department retail.\n"
-            "- Subscription TV: cable TV, satellite TV, streaming TV packages, and paid television services.\n"
-            "- Telecommunications: mobile, phone, internet, broadband, network, and telecom providers.\n"
-            "- Transport: public transport, taxis, rideshare, parking, tolls, freight, logistics, delivery, couriers, and vehicle registration.\n"
-            "- Travel: hotels, motels, resorts, holiday rentals, airlines, travel agencies, tours, cruises, and car rental.\n"
-            "- Utilities: electricity, gas, water, waste, tax office, council rates, government fees, fines, and public services.\n"
+            # 使用所有可用证据识别商户的商品、服务或经营活动；关键词和链接可作为强信号。仅在需要时使用网络搜索。
+            "Use all evidence to identify the merchant's goods, services, or activity; keywords and link can be strong signals. Use web search only when needed.\n"
+            # 根据商户真实的、实际经营的业务来分类，而不是看名字表面意思。
+            "Classify each merchant by its actual, real-world business activity, not by a superficial reading of its name. "
+            # 不需要完美匹配；当某个类别明显更合理时选最接近的分类。
+            "A perfect match is not required; choose the closest category when one is clearly more defensible than the others. "
+            # 仅在证据太弱或冲突时返回空字符串。
+            "Use an empty string only when evidence is too weak or conflicting.\n"
+            # 分类指南：
+            "Category guide:\n"
+            # 汽车：燃油、车辆销售、维修、零部件、洗车、道路救援服务。
+            "- Automotive: fuel, vehicles, repairs, parts, car washes, roadside services.\n"
+            # 百货商店：大型综合零售、折扣店、大型超市、百货连锁。
+            "- Department Stores: large mixed-retail, discount, supercentre, department-store chains.\n"
+            # 餐饮：餐厅、咖啡馆、酒吧、快餐、外卖、餐饮配送、预制餐食。
+            "- Dining Out: restaurants, cafes, bars, fast food, delivery, catering, prepared meals.\n"
+            # 捐赠：慈善机构、非营利组织、筹款、宗教捐赠。
+            "- Donations: charities, non-profits, fundraising, religious giving.\n"
+            # 教育：托儿所、学校、大学、辅导、培训。
+            "- Education: childcare, schools, universities, tutoring, training.\n"
+            # 娱乐：电影院、剧院、博物馆、景点、活动、俱乐部、音乐、游戏。
+            "- Entertainment: cinemas, theatres, museums, attractions, events, clubs, music, games.\n"
+            # 金融机构：银行、贷款机构、支付、抵押贷款、投资、券商。
+            "- Financial Institutions: banks, lenders, payments, mortgages, investments, brokers.\n"
+            # 赌博：赌场、博彩、投注、彩票、博彩场所。
+            "- Gambling: casinos, betting, wagering, lotteries, gaming venues.\n"
+            # 食品杂货：超市、食品店、面包店、酒类、食品供应商、批发商、加工商。
+            "- Groceries: supermarkets, food shops, bakeries, liquor, food suppliers, wholesalers, processors.\n"
+            # 健身及会员：健身房、健身、瑜伽、普拉提、体育训练、会员俱乐部。
+            "- Gyms and other memberships: gyms, fitness, yoga, pilates, sports training, member clubs.\n"
+            # 健康：药房、牙医、验光师、诊所、医院、医疗服务。
+            "- Health: pharmacies, dentists, optometrists, clinics, hospitals, healthcare.\n"
+            # 家居装修：建筑、工程、五金、清洁、维修、维护、设施、安保、工业服务。
+            "- Home Improvement: construction, trades, hardware, cleaning, repairs, maintenance, facilities, security, industrial services.\n"
+            # 信息：软件、IT、计算机服务、在线平台、媒体、出版、数据。
+            "- Information: software, IT, computer services, online platforms, media, publishing, data.\n"
+            # 保险：保险公司、经纪、保单、理赔、保修。
+            "- Insurance: insurers, brokers, policies, claims, warranties.\n"
+            # 个人护理：美发、美容、美甲、水疗、美妆、洗衣、裁缝、摄影。
+            "- Personal Care: hair, beauty, nails, spas, grooming, laundry, tailoring, photography.\n"
+            # 宠物：兽医、动物医院、宠物店、宠物食品、美容、寄养。
+            "- Pet Care: vets, animal hospitals, pet shops, pet food, grooming, boarding.\n"
+            # 租金：租金、租赁、物业管理、房地产中介、租赁中介、仓储。
+            "- Rent: rent, leases, property managers, real estate agencies, rental agencies, storage.\n"
+            # 零售：服装、鞋、珠宝、书籍、花店、礼品、电子产品、特色商品。
+            "- Retail: clothing, shoes, jewellery, books, florists, gifts, electronics, specialty goods.\n"
+            # 付费电视：有线电视、卫星电视、流媒体电视套餐、付费电视服务。
+            "- Subscription TV: cable, satellite, streaming TV, paid television.\n"
+            # 电信：移动、电话、互联网、宽带、网络、电信供应商。
+            "- Telecommunications: mobile, phone, internet, broadband, network, telecom providers.\n"
+            # 交通：公共交通、出租车、网约车、停车、过路费、货运、物流、配送、快递、车辆注册。
+            "- Transport: public transport, taxis, rideshare, parking, tolls, freight, delivery, couriers, registration.\n"
+            # 旅行：酒店、度假租赁、航空公司、旅行社、旅游、邮轮、租车。
+            "- Travel: hotels, holiday rentals, airlines, travel agencies, tours, cruises, car rental.\n"
+            # 公用事业：电、燃气、水、垃圾处理、税务、市政费、政府收费、罚款、公共服务。
+            "- Utilities: electricity, gas, water, waste, taxes, council rates, government fees, fines, public services.\n"
+            # 有把握时返回商户官网链接；否则返回空字符串。
             "Return a link to the merchant's official website when confident; otherwise return an empty string.\n"
+            # 仅返回 JSON 对象，key 为 results。results 必须是数组，每个输入 id 对应一个结果。
             "Return JSON only as an object with key results. results must be an array with one result per input id.\n"
+            # 每个结果必须包含 id, category, link, reason 字段。
             "Each result must have keys: id, category, link, reason.\n"
             f"Allowed category enum: {json.dumps(MERCHANT_CATEGORIES)}.\n"
             "Examples:\n"
             '- { "merchant_name": "Walmart", "keywords": "walmart supercenter retail department store", "category": "Department Stores" }\n'
-            '- { "merchant_name": "Spotify", "keywords": "spotify music streaming", "category": "Entertainment" }\n'
-            '- { "merchant_name": "Uber", "keywords": "uber ride rideshare", "category": "Transport" }\n'
-            '- { "merchant_name": "CVS Pharmacy", "keywords": "cvs pharmacy drugstore health", "category": "Health" }\n'
             '- { "merchant_name": "DoorDash", "keywords": "doordash food delivery", "category": "Dining Out" }\n'
-            '- { "merchant_name": "Hertz", "keywords": "hertz car rental", "category": "Travel" }\n'
-            '- { "merchant_name": "Sephora", "keywords": "sephora cosmetics beauty makeup", "category": "Personal Care" }\n'
-            '- { "merchant_name": "Goodstart Early Learning", "keywords": "goodstart early learning childcare daycare", "category": "Education" }\n'
             '- { "merchant_name": "Commonwealth Bank", "keywords": "commonwealth bank of australia cba", "category": "Financial Institutions" }\n'
             '- { "merchant_name": "Australian Taxation Office", "keywords": "ato australian taxation office", "category": "Utilities" }\n'
+            '- { "merchant_name": "ABC Food Suppliers", "keywords": "food supplier wholesale bakery", "category": "Groceries" }\n'
+            '- { "merchant_name": "Smith Property Management", "keywords": "property management real estate rentals", "category": "Rent" }\n'
+            '- { "merchant_name": "Metro IT Services", "keywords": "computer service software support", "category": "Information" }\n'
             f"items: {json.dumps(payload, ensure_ascii=False)}"
         )
 
