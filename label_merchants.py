@@ -198,10 +198,10 @@ class MerchantCategoryPromptConfig:
             "You are classifying merchants from a merchant knowledge base.\n"
             # 根据商户真实的、实际经营的业务来分类，而不是看名字表面意思。仅在需要时使用网络搜索。
             "Classify each merchant by its actual, real-world business activity, not by a superficial reading of its name. Use web search only when needed.\n"
-            # 不需要完美匹配；当某个类别明显更合理时选最接近的分类。
-            "A perfect match is not required; choose the closest category when one is clearly more defensible than the others. "
-            # 分不出来的时候空字符串。
-            "Use an empty string when the category cannot be determined.\n"
+            # 公司后缀不代表行业，Holdings/Nominees/Investments/Pty Ltd 只是通用法律实体，各行业都在用。
+            "'Holdings', 'Nominees', 'Investments', or 'Pty Ltd' in a name does NOT indicate financial activity — these are generic corporate suffixes used by all industries. Classify by the actual business, not the legal structure.\n"
+            # 搜不到就不要猜，返回空。
+            "Do not guess from name fragments. If web search cannot confirm the business activity, return an empty category.\n"
             # 分类指南：
             "Category guide:\n"
             # 汽车：燃油、车辆销售、维修、零部件、洗车、道路救援服务。
@@ -273,6 +273,10 @@ class MerchantCategoryPromptConfig:
             '- { "merchant_name": "Telstra", "keywords": "telstra mobile phone internet broadband telecom", "category": "Telecommunications" }\n'
             '- { "merchant_name": "Bunnings Warehouse", "keywords": "bunnings hardware tools garden building supplies", "category": "Home Improvement" }\n'
             '- { "merchant_name": "Kmart", "keywords": "kmart discount department store clothing home goods", "category": "Department Stores" }\n'
+            "Examples where the category is empty because the name is a generic corporate entity:\n"
+            '- { "merchant_name": "BENMIREN NOMINEES PTY LTD", "keywords": "benmiren nominees pty ltd", "category": "" }\n'
+            '- { "merchant_name": "GOCUP PASTORAL PTY LTD", "keywords": "gocup pastoral", "category": "" }\n'
+            '- { "merchant_name": "TRANBERRY PTY LTD", "keywords": "tranberry", "category": "" }\n'
             f"items: {json.dumps(payload, ensure_ascii=False)}"
         )
 
