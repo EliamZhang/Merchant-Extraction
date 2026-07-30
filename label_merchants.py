@@ -210,44 +210,44 @@ class MerchantCategoryPromptConfig:
             "- Automotive: fuel, vehicles, repairs, parts, car washes, roadside services.\n"
             # 百货商店：大型综合零售、折扣店、大型超市、百货连锁。
             "- Department Stores: large mixed-retail, discount, supercentre, department-store chains.\n"
-            # 餐饮：餐厅、咖啡馆、酒吧、快餐、外卖、餐饮配送、预制餐食。
-            "- Dining Out: restaurants, cafes, bars, fast food, delivery, catering, prepared meals.\n"
+            # 餐饮：餐厅、咖啡馆、酒吧、快餐、餐饮外卖、餐饮承办、预制餐食。
+            "- Dining Out: restaurants, cafes, bars, fast food, food delivery, catering, prepared meals.\n"
             # 捐赠：慈善机构、非营利组织、筹款、宗教捐赠。
             "- Donations: charities, non-profits, fundraising, religious giving.\n"
             # 教育：托儿所、学校、大学、辅导、培训。
             "- Education: childcare, schools, universities, tutoring, training.\n"
             # 娱乐：电影院、剧院、博物馆、景点、活动、俱乐部、音乐、游戏。
             "- Entertainment: cinemas, theatres, museums, attractions, events, clubs, music, games.\n"
-            # 金融机构：银行、贷款机构、支付、抵押贷款、投资、券商。
-            "- Financial Institutions: banks, lenders, payments, mortgages, investments, brokers.\n"
+            # 金融机构：银行、贷款机构、支付服务、抵押贷款、证券、财富管理、金融经纪。
+            "- Financial Institutions: banks, lenders, payment services, mortgages, securities, wealth, financial brokers.\n"
             # 赌博：赌场、博彩、投注、彩票、博彩场所。
             "- Gambling: casinos, betting, wagering, lotteries, gaming venues.\n"
-            # 食品杂货：超市、食品店、面包店、酒类、食品供应商、批发商、加工商。
-            "- Groceries: supermarkets, food shops, bakeries, liquor, food suppliers, wholesalers, processors.\n"
+            # 食品杂货：超市、食品店、面包店、肉店、海鲜、酒类、瓶装酒商店、食品供应商、批发商、加工商。
+            "- Groceries: supermarkets, food shops, bakeries, butchers, seafood, liquor, bottle shops, food suppliers, wholesalers, processors.\n"
             # 健身及会员：健身房、健身、瑜伽、普拉提、体育训练、会员俱乐部。
             "- Gyms and other memberships: gyms, fitness, yoga, pilates, sports training, member clubs.\n"
             # 健康：药房、牙医、验光师、诊所、医院、医疗服务。
             "- Health: pharmacies, dentists, optometrists, clinics, hospitals, healthcare.\n"
-            # 家居装修：建筑、工程、五金、清洁、维修、维护、设施、安保、工业服务。
-            "- Home Improvement: construction, trades, hardware, cleaning, repairs, maintenance, facilities, security, industrial services.\n"
-            # 信息：软件、IT、计算机服务、在线平台、媒体、出版、数据。
-            "- Information: software, IT, computer services, online platforms, media, publishing, data.\n"
+            # 家居装修：施工、技工、五金、清洁、维修、维护、设施、安保、建筑和物业服务。
+            "- Home Improvement: construction, trades, hardware, cleaning, repairs, maintenance, facilities, security, building and property services.\n"
+            # 信息：软件、IT、计算机服务、数据、媒体、出版、数字信息平台。
+            "- Information: software, IT, computer services, data, media, publishing, digital information platforms.\n"
             # 保险：保险公司、经纪、保单、理赔、保修。
             "- Insurance: insurers, brokers, policies, claims, warranties.\n"
-            # 个人护理：美发、美容、美甲、水疗、美妆、洗衣、裁缝、摄影。
-            "- Personal Care: hair, beauty, nails, spas, grooming, laundry, tailoring, photography.\n"
+            # 个人护理：美发、美容、美甲、水疗、美妆、洗衣、裁缝、消费者摄影。
+            "- Personal Care: hair, beauty, nails, spas, grooming, laundry, tailoring, consumer photography.\n"
             # 宠物：兽医、动物医院、宠物店、宠物食品、美容、寄养。
             "- Pet Care: vets, animal hospitals, pet shops, pet food, grooming, boarding.\n"
-            # 租金：租金、租赁、物业管理、房地产中介、租赁中介、仓储。
-            "- Rent: rent, leases, property managers, real estate agencies, rental agencies, storage.\n"
+            # 租金：租金、租赁、物业管理、房地产中介、租赁中介、仓储；不包括被动物业持有。
+            "- Rent: rent, leases, property managers, real estate agencies, rental agencies, storage; not passive property holding.\n"
             # 零售：服装、鞋、珠宝、书籍、花店、礼品、电子产品、特色商品。
             "- Retail: clothing, shoes, jewellery, books, florists, gifts, electronics, specialty goods.\n"
             # 付费电视：有线电视、卫星电视、流媒体电视套餐、付费电视服务。
             "- Subscription TV: cable, satellite, streaming TV, paid television.\n"
             # 电信：移动、电话、互联网、宽带、网络、电信供应商。
             "- Telecommunications: mobile, phone, internet, broadband, network, telecom providers.\n"
-            # 交通：公共交通、出租车、网约车、停车、过路费、货运、物流、配送、快递、车辆注册。
-            "- Transport: public transport, taxis, rideshare, parking, tolls, freight, delivery, couriers, registration.\n"
+            # 交通：公共交通、出租车、网约车、停车、过路费、货运、物流、快递、车辆注册。
+            "- Transport: public transport, taxis, rideshare, parking, tolls, freight, logistics, couriers, vehicle registration.\n"
             # 旅行：酒店、度假租赁、航空公司、旅行社、旅游、邮轮、租车。
             "- Travel: hotels, holiday rentals, airlines, travel agencies, tours, cruises, car rental.\n"
             # 公用事业：电、燃气、水、垃圾处理、税务、市政费、政府收费、罚款、公共服务。
