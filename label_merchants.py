@@ -267,6 +267,14 @@ class MerchantCategoryPromptConfig:
             '- { "merchant_name": "ABC Food Suppliers", "keywords": "food supplier wholesale bakery", "category": "Groceries" }\n'
             '- { "merchant_name": "Smith Property Management", "keywords": "property management real estate rentals", "category": "Rent" }\n'
             '- { "merchant_name": "Metro IT Services", "keywords": "computer service software support", "category": "Information" }\n'
+            '- { "merchant_name": "BWS", "keywords": "bws bottle shop liquor wine beer", "category": "Groceries" }\n'
+            '- { "merchant_name": "Uber", "keywords": "uber rideshare taxi trip transport", "category": "Transport" }\n'
+            '- { "merchant_name": "Booking.com", "keywords": "booking.com hotel accommodation travel booking", "category": "Travel" }\n'
+            '- { "merchant_name": "Chemist Warehouse", "keywords": "chemist warehouse pharmacy medicine health", "category": "Health" }\n'
+            '- { "merchant_name": "Netflix", "keywords": "netflix streaming tv subscription", "category": "Subscription TV" }\n'
+            '- { "merchant_name": "Telstra", "keywords": "telstra mobile phone internet broadband telecom", "category": "Telecommunications" }\n'
+            '- { "merchant_name": "Bunnings Warehouse", "keywords": "bunnings hardware tools garden building supplies", "category": "Home Improvement" }\n'
+            '- { "merchant_name": "Kmart", "keywords": "kmart discount department store clothing home goods", "category": "Department Stores" }\n'
             f"items: {json.dumps(payload, ensure_ascii=False)}"
         )
 
