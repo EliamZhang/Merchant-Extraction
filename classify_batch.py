@@ -162,6 +162,18 @@ def merge(split_file: str, classified_batch: str) -> None:
     print(f"Progress: {classified_total} classified, {processed_total} processed / {total} ({100*processed_total/total:.1f}%)")
 
 
+def next_file() -> str:
+    """Find the first split file that still has unprocessed merchants."""
+    for f in sorted(SPLIT_DIR.glob("*.json")):
+        with open(f, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        for item in data:
+            if not item.get("category", "").strip() and not item.get("_processed"):
+                print(f.name)
+                return f.name
+    return ""
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
@@ -177,6 +189,11 @@ def main():
             for f in sorted(SPLIT_DIR.glob("*.json")):
                 status(str(f))
                 print()
+    elif cmd == "next-file":
+        result = next_file()
+        if not result:
+            print("ALL_DONE", flush=True)
+            sys.exit(1)
     elif cmd == "extract":
         if len(sys.argv) < 3:
             print("Usage: python classify_batch.py extract <split_file.json> [--count N]", file=sys.stderr)
