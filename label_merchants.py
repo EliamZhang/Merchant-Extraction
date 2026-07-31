@@ -196,10 +196,8 @@ class MerchantCategoryPromptConfig:
         return (
             # 你正在从商户知识库中对商户进行分类。
             "You are classifying merchants from a merchant knowledge base.\n"
-            # 根据商户真实的、实际经营的业务来分类，而不是看名字表面意思。仅在需要时使用网络搜索。
-            "Classify each merchant by its actual, real-world business activity, not by a superficial reading of its name. Use web search only when needed.\n"
-            # 公司后缀不代表行业，Holdings/Nominees/Investments/Pty Ltd 只是通用法律实体，各行业都在用。
-            "'Holdings', 'Nominees', 'Investments', or 'Pty Ltd' in a name does NOT indicate financial activity — these are generic corporate suffixes used by all industries. Classify by the actual business, not the legal structure.\n"
+            # 根据商户真实的、实际经营的业务来分类，而不是看名字表面意思。必须使用网络搜索。
+            "Classify each merchant by its actual, real-world business activity, not by a superficial reading of its name. You must use web search.\n"
             # 搜不到就不要猜，返回空。
             "Do not guess from name fragments. If web search cannot confirm the business activity, return an empty category.\n"
             # 分类指南：
