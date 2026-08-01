@@ -80,14 +80,28 @@ If output is `ALL_DONE`: stop and report "All done — every merchant has a cate
 
 ### Step 2: Web search and classify each merchant
 
-For EVERY merchant from Step 1:
+**Fast-skip rule** — before searching, check the name. These patterns almost never have discoverable public businesses. Search once, and if no clear business found: `""`. Do NOT run a second round:
+- Contains "Holdings", "Nominees", "Group Pty Ltd"
+- Pattern: personal first name + "Enterprises" (e.g. "J Smith Enterprises", "Christiansen Enterprises")
+- "Enterprises" or "Acquisitions" when paired with a generic location/word (e.g. "Foxdale Enterprises", "Braidwood Acquisitions")
 
-1. WebSearch: `"{merchant_name}" Australia business type`
+For ALL other merchants:
+
+1. Search: `"{merchant_name}"` — no location suffix, let global results surface. If the name strongly suggests Australian origin (contains an Australian place name, "Pty Ltd", etc.), add `Australia`.
+   - If the name contains "Pty Ltd", ALSO search without "Pty Ltd" **in the same round** (parallel).
 2. Read the results. Identify the real-world business activity.
 3. Assign a category from the valid list below, or `""` if unconfirmable.
-4. Keep a running list of `{merchant_name: category}` pairs.
 
-If a search is inconclusive, try one more with different terms (e.g. drop "PTY LTD", add "company", etc.). If still nothing, category = `""`.
+**Second round only when**: the first search found a potential lead (brand mention, store page, news) but wasn't conclusive. Then try: drop suffixes, add industry hints (e.g. "cafe", "pharmacy", "construction"), or search the trading name found in ABN records.
+If first search returned ONLY ABN/ASIC registration pages with no trading name → `""` immediately, no second round.
+
+**Search sources (reliability descending):**
+- **ABN Lookup / ABR** — check for registered business/trading names (these are the actual brand, not the legal entity). If no trading name listed → shell.
+- **Business directories / maps** — Whereis, shopping centre tenant lists, Google Maps business listings.
+- **Brand/store pages** — official websites, franchisee lists. Best evidence for linking a legal entity to a known brand.
+- **Legal docs / PDFs** — court filings, class-action defendant lists, franchise operator schedules.
+- **Industry databases** — SIC/ANZSIC codes. Supporting evidence only.
+- **News / social media** — lowest reliability. Corroborate with other sources.
 
 ### Step 3: Write results
 
@@ -179,11 +193,9 @@ Batch N: classified=X empty=Y | total tracked=Z | [CONTINUING|ALL_DONE]
 - Classify by **actual, real-world business activity confirmed via web search**
 - **Must use web search** — do not guess from name fragments
 - If search cannot confirm the business activity → `""`
-- Generic PTY LTD, Holdings, Nominees with no public-facing business → `""`
-- Trust accounts, super funds, shell companies, personal names + "Enterprises" → `""`
 - `""` is valid — it marks "searched, nothing found" so the merchant is never re-extracted
-- Add "Australia" to searches for Australian-looking names
-- For "PTY LTD" names, search both with and without the suffix
+- For names with "Pty Ltd", always search without it as a parallel variant
+- When ABN Lookup shows a trading/business name different from the legal name, search that trading name too
 
 ## Valid Categories (exact, case-sensitive)
 
