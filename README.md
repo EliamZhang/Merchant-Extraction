@@ -72,6 +72,19 @@ merchant_kb.csv  ←→  classify-merchants skill（web search + DeepSeek）
 - 未找到有效分类的商户标记为已处理，不会被重复提取
 - 支持 `batch_size` 和 `max_batches` 参数控制批次大小和数量
 
+```bash
+# 直接在 Claude Code 中输入以下命令：
+
+/classify-merchants                              # 默认：1 批，每批 10 个商户
+/classify-merchants batch_size=20 max_batches=3  # 3 批，每批 20 个商户
+/classify-merchants max_batches=0                # 不限批次，跑完所有未分类商户
+```
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `batch_size` | 10 | 每批处理多少个商户 |
+| `max_batches` | 1 | 最多执行几批（0 = 不限，跑到无可分类商户为止） |
+
 **方式二：脚本分批处理**
 
 ```
