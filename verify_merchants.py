@@ -215,7 +215,7 @@ class MerchantDecision:
         link = safe_url(str(payload.get("link", "")))
         reason = clean_output_value(str(payload.get("reason", "")))
 
-        if is_real and standardized and link:
+        if is_real and standardized:
             if not keyword:
                 keyword = standardized
             return cls(
