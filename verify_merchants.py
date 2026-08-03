@@ -16,6 +16,8 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from utils import (
+    ApiError,
+    call_with_retry,
     china_timestamp_now,
     clean_output_value,
     extract_json_object,
@@ -395,20 +397,45 @@ class DeepSeekClient:
     def verify_merchant_batch(self, items: list[dict[str, str]]) -> dict[str, MerchantDecision]:
         if not items:
             return {}
+        if len(items) == 1:
+            return self._verify_batch_once(items)
+        try:
+            return self._verify_batch_once(items)
+        except RuntimeError as exc:
+            print(
+                f"Batch verification failed, splitting into halves size={len(items)} error={exc}",
+                flush=True,
+            )
+        half = len(items) // 2
+        combined: dict[str, MerchantDecision] = {}
+        for piece in (items[:half], items[half:]):
+            combined.update(self.verify_merchant_batch(piece))
+        return combined
+
+    def _verify_batch_once(self, items: list[dict[str, str]]) -> dict[str, MerchantDecision]:
+        if not items:
+            return {}
         prompt = self.prompt_config.build_batch_user_prompt(items)
-        last_error = None
-        for attempt in range(1, self.max_retries + 1):
-            try:
-                message = self._chat_completion(prompt)
-                return self.response_validator.parse_batch(items, message)
-            except (ValueError, json.JSONDecodeError) as exc:
-                last_error = exc
-            if attempt >= self.max_retries:
-                break
-            time.sleep(self.retry_delay_seconds * attempt)
-        raise RuntimeError(
-            f"Batch verification failed after {self.max_retries} retries: {last_error}"
+        message = call_with_retry(
+            lambda: self._chat_completion(prompt),
+            max_retries=self.max_retries,
+            initial_delay_seconds=self.retry_delay_seconds,
         )
+        decisions = self.response_validator.parse_batch(items, message)
+        missing = [
+            item["id"] for item in items if item["id"] not in decisions
+        ]
+        if not missing:
+            return decisions
+        print(
+            f"Batch response missing {len(missing)}/{len(items)} items, requesting them again ids={missing}",
+            flush=True,
+        )
+        retry_items = [item for item in items if item["id"] in missing]
+        if len(retry_items) >= len(items):
+            raise RuntimeError("Batch retry requested the same items")
+        decisions.update(self._verify_batch_once(retry_items))
+        return decisions
 
     def _chat_completion(self, prompt: str) -> str:
         body: dict[str, Any] = {
@@ -438,7 +465,9 @@ class DeepSeekClient:
             try:
                 response_json = post_json(self.api_key, self.base_url, "/chat/completions", body, self.timeout_seconds)
                 return str(response_json["choices"][0]["message"]["content"])
-            except Exception as exc:  # noqa: BLE001
+            except ApiError as exc:
+                if not exc.retryable:
+                    raise
                 last_error = exc
             if attempt >= self.max_retries:
                 break
@@ -1122,7 +1151,20 @@ def process_file(args: argparse.Namespace) -> None:
         batch_num += 1
         stats["api_calls"] += 1
 
-        decisions = client.verify_merchant_batch(batch_items)
+        try:
+            decisions = client.verify_merchant_batch(batch_items)
+        except RuntimeError as exc:
+            print(
+                f"Batch {batch_num} skipped after retries error={exc} "
+                f"candidates={len(batch_candidates)}",
+                flush=True,
+            )
+            for canonical_value, _, _ in batch_candidates:
+                for idx in exact_groups[canonical_value]:
+                    mark_processed(idx, None, match_source=MatchSource.UNRESOLVED)
+            print_batch_summary(batch_num, 0, len(batch_candidates))
+            candidate_index += batch_size
+            continue
 
         batch_resolved = 0
         batch_unresolved = 0

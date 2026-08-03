@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import argparse
 import atexit
 import csv
@@ -12,6 +14,8 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from utils import (
+    ApiError,
+    call_with_retry,
     china_timestamp_now,
     clean_output_value,
     extract_json_object,
@@ -331,21 +335,55 @@ class DeepSeekMerchantClassifier:
     def classify_merchant_batch(self, items: list[dict[str, str]]) -> list[MerchantClassification]:
         if not items:
             return []
+        if len(items) == 1:
+            return self._classify_batch_once(items)
+        try:
+            return self._classify_batch_once(items)
+        except RuntimeError as exc:
+            print(
+                f"Batch classification failed, splitting into halves size={len(items)} error={exc}",
+                flush=True,
+            )
+        half = len(items) // 2
+        combined: list[MerchantClassification] = []
+        for piece in (items[:half], items[half:]):
+            combined.extend(self.classify_merchant_batch(piece))
+        return combined
 
+    def _classify_batch_once(self, items: list[dict[str, str]]) -> list[MerchantClassification]:
+        if not items:
+            return []
         prompt = self.prompt_config.build_batch_user_prompt(items)
-        last_error = None
-        for attempt in range(1, self.max_retries + 1):
-            try:
-                message = self._chat_completion(prompt)
-                return self.response_validator.parse_batch(items, message)
-            except (ValueError, json.JSONDecodeError) as exc:
-                last_error = exc
-            if attempt >= self.max_retries:
-                break
-            time.sleep(self.retry_delay_seconds * attempt)
-        raise RuntimeError(
-            f"Batch classification failed after {self.max_retries} retries: {last_error}"
+        message = call_with_retry(
+            lambda: self._chat_completion(prompt),
+            max_retries=self.max_retries,
+            initial_delay_seconds=self.retry_delay_seconds,
         )
+        classifications = self.response_validator.parse_batch(items, message)
+        resolved_names = {
+            c.merchant_name for c in classifications if c.reason != "missing_batch_result"
+        }
+        missing_ids = [
+            item["id"] for item in items if item.get("merchant_name") not in resolved_names
+        ]
+        if missing_ids:
+            print(
+                f"Batch response missing {len(missing_ids)}/{len(items)} items, "
+                "requesting them again",
+                flush=True,
+            )
+            retry_items = [item for item in items if item["id"] in missing_ids]
+            if len(retry_items) >= len(items):
+                raise RuntimeError("Batch retry requested the same items")
+            retry_results = self._classify_batch_once(retry_items)
+            classifications = [
+                next(
+                    (c for c in retry_results if c.merchant_name == item.get("merchant_name", "")),
+                    placeholder,
+                )
+                for item, placeholder in zip(items, classifications)
+            ]
+        return classifications
 
     def _chat_completion(self, prompt: str) -> str:
         body: dict[str, Any] = {
@@ -375,7 +413,9 @@ class DeepSeekMerchantClassifier:
             try:
                 response_json = post_json(self.api_key, self.base_url, "/chat/completions", body, self.timeout_seconds)
                 return str(response_json["choices"][0]["message"]["content"])
-            except Exception as exc:  # noqa: BLE001
+            except ApiError as exc:
+                if not exc.retryable:
+                    raise
                 last_error = exc
             if attempt >= self.max_retries:
                 break
@@ -649,64 +689,76 @@ def classify_merchant_kb(
         )
 
     atexit.register(save_on_exit)
-    for start in range(0, len(api_items), batch_size):
-        batch = api_items[start : start + batch_size]
-        batch_number = start // batch_size + 1
-        if progress:
-            print(
-                f"Batch {batch_number}/{batch_total} start rows={len(batch)} "
-                f"classified={stats['rows_classified']} updated={stats['rows_updated']}",
-                flush=True,
-            )
-        classifications = client.classify_merchant_batch([item for _, item in batch])
-        stats["api_calls"] += 1
-        batch_failures = 0
-        for (row_index, item), classification in zip(batch, classifications):
-            stats["rows_classified"] += 1
-            if classification.should_cache():
-                cache_store.set(item["cache_key"], classification)
-                cache_dirty = True
-            resolved_link = safe_url(classification.link)
-            if resolved_link and rows[row_index].get("link", "") != resolved_link:
-                rows[row_index]["link"] = resolved_link
-                dirty = True
-            category = clean_category(classification.category)
-            if not category:
-                batch_failures += 1
-                if classification.reason:
-                    print(
-                        f"Skip merchant={item['merchant_name']!r} reason={classification.reason!r}",
-                        flush=True,
-                    )
-                continue
-            if rows[row_index].get("category", "") == category:
-                continue
-            rows[row_index]["category"] = category
-            rows[row_index]["category_source"] = "AI"
-            rows[row_index]["category_updated_at"] = china_timestamp_now()
-            dirty = True
-            stats["rows_updated"] += 1
-            if verbose:
+    try:
+        for start in range(0, len(api_items), batch_size):
+            batch = api_items[start : start + batch_size]
+            batch_number = start // batch_size + 1
+            if progress:
                 print(
-                    f"Classified merchant={rows[row_index].get('merchant_name', '')!r} category={category!r}",
+                    f"Batch {batch_number}/{batch_total} start rows={len(batch)} "
+                    f"classified={stats['rows_classified']} updated={stats['rows_updated']}",
                     flush=True,
                 )
-        if cache_save_every_batches and stats["api_calls"] % cache_save_every_batches == 0:
-            save_cache_if_dirty()
-        if progress:
-            print(
-                f"Batch {batch_number}/{batch_total} done "
-                f"classified={stats['rows_classified']} updated={stats['rows_updated']} "
-                f"failures={batch_failures} api_calls={stats['api_calls']}",
-                flush=True,
-            )
-        if save_every_batches and stats["api_calls"] % save_every_batches == 0:
-            save_rows(f"batch_{batch_number}_of_{batch_total}")
+            classifications = client.classify_merchant_batch([item for _, item in batch])
+            stats["api_calls"] += 1
+            batch_failures = 0
+            for (row_index, item), classification in zip(batch, classifications):
+                stats["rows_classified"] += 1
+                if classification.should_cache():
+                    cache_store.set(item["cache_key"], classification)
+                    cache_dirty = True
+                resolved_link = safe_url(classification.link)
+                if resolved_link and rows[row_index].get("link", "") != resolved_link:
+                    rows[row_index]["link"] = resolved_link
+                    dirty = True
+                category = clean_category(classification.category)
+                if not category:
+                    batch_failures += 1
+                    if classification.reason:
+                        print(
+                            f"Skip merchant={item['merchant_name']!r} reason={classification.reason!r}",
+                            flush=True,
+                        )
+                    continue
+                if rows[row_index].get("category", "") == category:
+                    continue
+                rows[row_index]["category"] = category
+                rows[row_index]["category_source"] = "AI"
+                rows[row_index]["category_updated_at"] = china_timestamp_now()
+                dirty = True
+                stats["rows_updated"] += 1
+                if verbose:
+                    print(
+                        f"Classified merchant={rows[row_index].get('merchant_name', '')!r} category={category!r}",
+                        flush=True,
+                    )
+            if cache_save_every_batches and stats["api_calls"] % cache_save_every_batches == 0:
+                save_cache_if_dirty()
+            if progress:
+                print(
+                    f"Batch {batch_number}/{batch_total} done "
+                    f"classified={stats['rows_classified']} updated={stats['rows_updated']} "
+                    f"failures={batch_failures} api_calls={stats['api_calls']}",
+                    flush=True,
+                )
+            if save_every_batches and stats["api_calls"] % save_every_batches == 0:
+                save_rows(f"batch_{batch_number}_of_{batch_total}")
 
-    if dirty or output_path is not None:
-        save_rows("final", force=True)
-    save_cache_if_dirty()
-    atexit.unregister(save_on_exit)
+        if dirty or output_path is not None:
+            save_rows("final", force=True)
+        save_cache_if_dirty()
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except Exception as exc:
+        print(f"Classification failed with unexpected error, saving state: {exc}", flush=True)
+        try:
+            save_cache_if_dirty()
+            if dirty:
+                save_rows("error", force=True)
+        finally:
+            print_exit_summary("error")
+    finally:
+        atexit.unregister(save_on_exit)
     return stats
 
 
