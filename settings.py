@@ -68,7 +68,7 @@ KNOWN_ABBREVIATIONS = frozenset({
     # ── 加油站 / 能源 ──
     "BP", "OTR",          # BP加油站, On The Run
     # ── 零售 / 超市 ──
-    "IGA", "ALDI", "SPAR", "MYER", "IKEA",
+    "IGA", "ALDI", "SPAR", "MYER", "IKEA", "BIGW",
     # ── 快餐 / 餐饮 ──
     "KFC", "GYG", "MCD", "HJS",   # Guzman y Gomez, McDonald's, Hungry Jack's
     # ── 酒类零售 ──
