@@ -1,6 +1,6 @@
 ---
 name: classify-merchants
-description: Fast, evidence-based web-search classification of uncategorized merchants in merchant_kb.csv. Self-contained: reads CSV directly, tracks searched merchants, and writes results back. No external script dependencies.
+description: Fast, evidence-based web-search classification of uncategorized merchants in merchant_kb.csv for a global merchant/company database. Self-contained: reads CSV directly, tracks searched merchants, and writes results back. No external script dependencies.
 arguments:
   - name: batch_size
     description: Number of merchants to process per invocation (default 10)
@@ -12,47 +12,47 @@ arguments:
 
 # Classify Merchants via Web Search
 
-You are an autonomous batch processor. Every invocation selects merchants, searches the web, writes results, then stops with a summary. Do not ask questions; use conservative judgment and run.
+Autonomously classify uncategorized merchants in `merchant_kb.csv` using web evidence. Each invocation selects a batch, searches, writes confirmed categories, marks every searched merchant as searched, then reports a concise summary.
 
-## Core Principle
+Do not ask questions during normal runs. Use conservative judgment and keep moving.
 
-This skill is self-contained. It reads `merchant_kb.csv` directly, uses `cache/web_classify_tracking.json` to remember merchants already searched, and writes classification results directly back to `merchant_kb.csv`. Do not call project scripts.
+## Core Rules
 
-Optimize for:
-- Fast: one strong search round for most merchants, second round only with a real lead.
-- Accurate: classify only when web evidence confirms the real-world business activity.
-- Conservative: return `""` when the activity or legal-entity-to-brand link is unclear.
-- Evidence is not limited to Australia. Merchants may operate anywhere; reliable sources from any country (official sites, business registries, directories, news, maps) can support a category. Foreign same-name results are not automatically invalid — they count when they can be linked to the searched name (consistent name plus matching industry, location, or registration details) and are ignored when they cannot.
+- Treat the KB as global. Do not assume merchants are Australian, American, or from any single country.
+- Classify by confirmed real-world business activity, not by name fragments alone.
+- Use web search for every merchant. If evidence is weak or conflicting, return `""`.
+- A result is classifiable only when both are true:
+  - The source reasonably matches the searched merchant, legal entity, trading name, or brand.
+  - The source shows business activity that maps to exactly one valid category.
+- Reliable evidence can come from any country: official websites, business registries, maps, reputable directories, franchise/store lists, shopping-center tenant pages, regulatory filings, PDFs, or news.
+- Same-name businesses in other countries count only when the name, location, registration detail, brand, or other context supports the match.
+- Empty string means searched but not confidently classifiable.
 
-## Tracking File
+## Files
 
-`cache/web_classify_tracking.json`:
-```json
-{
-  "searched": ["merchant name 1", "merchant name 2"],
-  "last_updated": "2026-08-01T12:00:00+08:00"
-}
-```
-
-Merchants in `searched` are skipped forever because they were web-searched and either received a category or were confirmed unfindable.
+- Read and update `merchant_kb.csv`.
+- Track searched names in `cache/web_classify_tracking.json`.
+- Temporarily write batch results to `cache/_batch_result.json`.
+- Do not call project scripts.
+- Only modify `category`, `category_source`, and `category_updated_at` in the CSV.
 
 ## Workflow
 
 ### Step 0: Parse Arguments
 
-`$batch_size` defaults to 10. `$max_batches` defaults to 1. If `$max_batches` is 0, keep going until there are no uncategorized and unsearched merchants. If `$max_batches` is omitted, default to 1.
+`$batch_size` defaults to 10. `$max_batches` defaults to 1. If `$max_batches` is 0, keep running until there are no uncategorized and unsearched merchants.
 
-Run the steps below as a loop, up to `$max_batches` batches.
+Run Steps 1-4 as a loop, up to `$max_batches` batches.
 
 ### Step 1: Find Next Batch
 
-First, ensure the tracking file exists:
+Ensure tracking exists:
 
 ```bash
 python -c "import json, os; os.makedirs('cache', exist_ok=True); p='cache/web_classify_tracking.json'; (not os.path.exists(p)) and json.dump({'searched':[],'last_updated':''}, open(p,'w',encoding='utf-8'), ensure_ascii=False, indent=2)"
 ```
 
-Then find uncategorized and unsearched merchants:
+Find uncategorized merchants not already searched:
 
 ```bash
 python -c "
@@ -89,116 +89,54 @@ else:
 " $batch_size
 ```
 
-If output is `ALL_DONE`, stop and report: `All done - every merchant has a category or has been searched.`
+If output is `ALL_DONE`, stop and report:
+
+```text
+All done - every merchant has a category or has been searched.
+```
 
 ### Step 2: Search and Classify
 
-Process the batch as a single classification unit. Search queries for different merchants and query variants should be run in parallel whenever the environment supports it.
+Process the batch as one unit. Run searches for different merchants in parallel whenever the environment supports it.
 
-#### Search Budget
+For each merchant:
 
-Default budget per merchant:
-- Round 1: one parallel search set.
-- Round 2: only if Round 1 produced a plausible lead but not enough evidence.
-- Stop after Round 2. Do not keep exploring.
+1. Search the exact name.
+2. Search a cleaned name without common legal suffixes when useful.
+3. Use the CSV `keywords` and `link` fields as hints when helpful, but not as automatic proof.
+4. Add country, city, registry number, brand, or industry terms only when found in the CSV or search results.
+5. Run a second search round only when the first round finds a plausible lead, such as a trading name, possible brand, location, registry page, or industry hint.
+6. Stop after two rounds.
 
-Fast-skip names still require one search round before returning `""`, but they never get Round 2 unless a strong public-facing lead appears.
+Common legal suffixes to ignore for search variants include global company endings and passive-entity words:
 
-#### Round 1 Query Plan
+```text
+Inc, Incorporated, LLC, LLP, LP, Ltd, Limited, PLC, Corp, Corporation, Co,
+Company, Pty Ltd, Proprietary Limited, GmbH, AG, SA, SAS, SARL, BV, NV,
+SpA, SRL, SL, AB, AS, Oy, A/S, Pte Ltd, SDN BHD, BHD, KK, GK, Kft,
+Holdings, Holding, Group, Investments, Nominees, Trustee, Trust
+```
 
-For each merchant, build a compact set of high-signal queries:
-- Exact legal name: `"{merchant_name}"`
-- Australia-biased exact name when Australian context is likely: `"{merchant_name}" Australia`
-- If the name contains a legal suffix, also search the suffix-stripped version in the same round.
-- If the CSV `keywords` or `link` field is available in context, use it only as supporting context, not as proof.
+Use these simple decisions:
 
-Legal suffixes to strip for variant searches:
-- `Pty Ltd`, `Proprietary Limited`, `Ltd`, `Limited`, `No Liability`, `NL`
-- `Trading Pty Ltd`, `Holdings Pty Ltd`, `Group Pty Ltd`, `Nominees Pty Ltd`
-- punctuation-only suffix noise after stripping
+- **Classify** when a reliable source identifies the merchant or its trading brand and shows activity matching one valid category.
+- **Classify** when two independent sources converge on the same merchant and activity, even if neither source is perfect alone.
+- **Return `""`** when results only prove a legal entity exists, when the entity appears passive, when the activity is unclear, when multiple same-name businesses conflict, or when no category fits cleanly.
 
-Australian context is likely when the name contains:
-- `Pty`, `ABN`, `ACN`, Australian state abbreviations, or Australian place names.
+Examples of enough evidence:
 
-#### Fast-Skip Patterns
+- Official site shows the brand activity and the name matches the merchant.
+- Registry shows a trading name, and the trading name's site/listing confirms activity.
+- Map or reputable directory links the name to an operating location with clear activity.
+- Franchise, store, tenant, filing, PDF, or news source links the legal entity to a brand, and another source confirms the brand activity.
 
-These patterns are usually non-public corporate entities. Search Round 1 only; if no clear consumer-facing business, return `""`:
-- Contains `Holdings`, `Nominees`, `Investments`, `Acquisitions`, `Pastoral`, `Superannuation`, `Family Trust`, `Trustee`
-- Contains `Group Pty Ltd` without a known brand result
-- Personal name plus `Enterprises`, `Trading`, `Consulting`, or `Services`
-- Generic location/word plus `Enterprises`, `Acquisitions`, `Investments`, or `Holdings`
-- ABN/ASIC-only results with no registered trading/business name
+Examples of not enough evidence:
 
-#### Evidence Rules
-
-Classify with one of these evidence patterns:
-- Official website or brand page clearly shows the activity and matches the merchant/legal name.
-- Business registry data (ABN Lookup/ABR, ASIC, local Chamber of Commerce, company databases) shows a registered business or trading name; that name is then found as a real business with an activity — the two sources together are sufficient.
-- Franchisee/store/operator list, shopping-centre tenant page, map listing, or reputable directory links the legal entity or trading name to an operating business.
-- Legal PDF/news/database links the legal entity to a brand, and another source confirms the brand activity.
-- ≥2 independent sources converge on the same operating business with the same activity and one of them is authoritative (official page, registry, directory, map, news) — the link is then considered confirmed even without a page that explicitly ties legal name to brand.
-
-Return `""` when:
-- All results are only ABN/ASIC/company-registration pages with no trading name, and no other source mentions the entity's activity.
-- A brand exists but no source of any kind links it to the searched name.
-- The name is too generic, search results conflict, and no consistent activity wins.
-- The activity cannot be mapped confidently to exactly one valid category.
-- Only social media or weak directory snippets exist and no corroborating source is found.
-- Searches only surface same-name businesses in other countries and no source links them to the searched entity.
-
-Confirm the link before classifying:
-- If the official/brand page or registry entry itself ties the searched name to the operating business (explicit trading name, matching registration details, ABN/company number on the page), the link is confirmed.
-- Otherwise, find one corroborating source (registry entry, directory, map listing, news) that ties the searched name to the brand before classifying.
-- If no corroboration exists after Round 2, return `""` — the confidence tier below does not replace this check.
-
-#### Round 2 Triggers
-
-Run Round 2 only if Round 1 produced a plausible lead:
-- A trading/business name from ABN Lookup.
-- A possible brand/store name.
-- A specific location plus business listing.
-- A source naming an industry but not enough to classify.
-
-Round 2 query options:
-- Search the trading/business name exactly.
-- Search suffix-stripped name plus one likely industry hint found from Round 1.
-- Search `"legal name" "trading as"` or `"legal name" franchise`.
-- Search the candidate brand plus the country/region found in Round 1 (e.g. Australia, UK, Canada) if the result set is global/noisy.
-
-Do not run Round 2 when Round 1 found only registry pages or no meaningful lead.
-
-#### Source Reliability
-
-Use sources in this order:
-1. Official brand/store/franchise pages.
-2. ABN Lookup/ABR trading or business names.
-3. Shopping centre tenant pages, maps, reputable business directories.
-4. Legal documents, PDFs, franchise schedules, court filings.
-5. Industry databases/SIC/ANZSIC records as supporting evidence only.
-6. News and social media as weak corroboration only.
-
-#### Confidence Tiers
-
-When the link between the searched name and an operating business is not explicit, use these tiers instead of returning `""` automatically:
-
-- **high** — official page, registry entry, or franchise/store list ties the name to the business, or ≥2 independent authoritative sources converge on the same business.
-- **medium** — one authoritative source names the business/activity, or strong same-name + matching industry evidence (e.g., one source links the name to the brand, another confirms the activity). Classify with `medium` confidence.
-- **low** — only weak sources (social media, low-quality directories) or name-only matches; activity unclear. Return `""`.
-- **empty** — no evidence at all, or foreign same-name results only, or the entity is confirmed as passive (Holdings/Nominees/investment without operations). Return `""`.
-
-Classification rule: `high` and `medium` → classify. `low` and `empty` → `""`.
-
-
-
-#### Classification Output While Searching
-
-For each merchant, keep a short internal note:
-- `category`: valid category or `""`
-- `confidence`: `high`, `medium`, `low`, or `empty`
-- `evidence`: one short phrase naming the best evidence
-- `reason`: why the category was chosen or why it is empty
-
-The final saved JSON only needs `results`; `evidence` and `reason` are for your summary and self-check.
+- Registry-only pages with no trading name or operating activity.
+- A brand with no source linking it to the searched merchant.
+- Social media or low-quality directory snippets without corroboration.
+- Passive holding, investment, nominee, trustee, or property ownership entities with no customer-facing operation.
+- A generic personal or shell-company name with no public business.
 
 ### Step 3: Write Results
 
@@ -214,11 +152,12 @@ Write `cache/_batch_result.json` with every merchant from the batch included exa
 ```
 
 Rules:
-- Empty string means searched but no category was confirmed.
+
 - Category values must exactly match the valid category list.
+- Empty string means searched but no category was confirmed.
 - Never omit a merchant from the batch.
 
-Then run the save script:
+Then run:
 
 ```bash
 python -c "
@@ -332,90 +271,70 @@ print(f'SAVED: classified={classified} empty={empty} updated={updated} total_tra
 "
 ```
 
-### Step 4: Loop or Stop
+### Step 4: Report
 
-Report a one-line summary after each batch. If `$max_batches` is 0, go back to Step 1. If the configured number of batches has completed, stop. If Step 1 returned `ALL_DONE`, stop.
+Report after each batch:
 
-Final report format:
 ```text
 Batch N: classified=X empty=Y updated=U | total tracked=Z | [CONTINUING|ALL_DONE]
 ```
 
-## Classification Rules
-
-- Classify by actual, real-world business activity confirmed via web search.
-- Must use web search; do not guess from name fragments.
-- Prefer `""` over a weak or inferred category — but `medium`-confidence evidence (one authoritative source, or consistent name + industry match) is enough to classify.
-- For names with legal suffixes, search both full and suffix-stripped forms in the same round.
-- When registry data shows a trading/business name different from the legal name, search that trading name too.
-- If a source only proves a legal entity exists, not what it operates, return `""`.
-- For holding/property/investment/trust entities, do not use passive asset ownership as proof of `Rent` unless the entity operates property management, leasing, real estate agency, or storage services.
+If `$max_batches` is 0, return to Step 1. Otherwise stop after the configured number of batches.
 
 ## Valid Categories
 
 Exact, case-sensitive:
 
-Automotive, Department Stores, Dining Out, Donations, Education, Entertainment, Financial Institutions, Gambling, Groceries, Gyms and other memberships, Health, Home Improvement, Information, Insurance, Personal Care, Pet Care, Rent, Retail, Subscription TV, Telecommunications, Transport, Travel, Utilities
+```text
+Automotive, Department Stores, Dining Out, Donations, Education, Entertainment,
+Financial Institutions, Gambling, Groceries, Gyms and other memberships, Health,
+Home Improvement, Information, Insurance, Personal Care, Pet Care, Rent, Retail,
+Subscription TV, Telecommunications, Transport, Travel, Utilities
+```
 
-Quick reference:
-- Automotive: fuel, vehicles, repairs, parts, car washes, roadside
-- Department Stores: large mixed-retail, discount, supercentre
-- Dining Out: restaurants, cafes, bars, fast food, food delivery, catering, prepared meals
-- Donations: charities, non-profits, fundraising, religious giving
-- Education: childcare, schools, universities, tutoring, training
-- Entertainment: cinemas, theatres, museums, attractions, events, clubs, music, games
-- Financial Institutions: banks, lenders, payment services, mortgages, securities, wealth, brokers
-- Gambling: casinos, betting, wagering, lotteries, gaming venues
-- Groceries: supermarkets, food shops, bakeries, butchers, seafood, liquor, bottle shops, food suppliers, wholesalers, processors
-- Gyms and other memberships: gyms, fitness, yoga, pilates, sports training, member clubs
-- Health: pharmacies, dentists, optometrists, clinics, hospitals, healthcare
-- Home Improvement: construction, trades, hardware, cleaning, repairs, maintenance, facilities, security, building services
-- Information: software, IT, computer services, data, media, publishing, digital platforms
-- Insurance: insurers, brokers, policies, claims, warranties
-- Personal Care: hair, beauty, nails, spas, grooming, laundry, tailoring, consumer photography
-- Pet Care: vets, animal hospitals, pet shops, pet food, grooming, boarding
-- Rent: rent, leases, property managers, real estate agencies, storage
-- Retail: clothing, shoes, jewellery, books, florists, gifts, electronics, specialty goods
-- Subscription TV: cable, satellite, streaming TV, paid television
-- Telecommunications: mobile, phone, internet, broadband, network, telecom providers
-- Transport: public transport, taxis, rideshare, parking, tolls, freight, logistics, couriers, vehicle registration
-- Travel: hotels, holiday rentals, airlines, travel agencies, tours, cruises, car rental
-- Utilities: electricity, gas, water, waste, taxes, council rates, government fees, fines, public services
+Quick mapping:
 
-## Tie-Breakers
+- Automotive: fuel, vehicles, repairs, parts, car washes, roadside assistance.
+- Department Stores: large mixed retail, discount stores, supercenters.
+- Dining Out: restaurants, cafes, bars, fast food, food delivery, catering, prepared meals.
+- Donations: charities, nonprofits, fundraising, religious giving.
+- Education: childcare, schools, universities, tutoring, training.
+- Entertainment: cinemas, theaters, museums, attractions, events, clubs, music, games, sports clubs.
+- Financial Institutions: banks, lenders, payment services, mortgages, securities, wealth, brokers.
+- Gambling: casinos, betting, wagering, lotteries, gaming venues.
+- Groceries: supermarkets, food shops, bakeries, butchers, seafood, liquor, food suppliers, wholesalers, processors.
+- Gyms and other memberships: gyms, fitness, yoga, pilates, sports training, member clubs.
+- Health: pharmacies, dentists, optometrists, clinics, hospitals, healthcare.
+- Home Improvement: construction, trades, hardware, cleaning, repairs, maintenance, facilities, security, building services.
+- Information: software, IT, computer services, data, media, publishing, digital platforms.
+- Insurance: insurers, brokers, policies, claims, warranties.
+- Personal Care: hair, beauty, nails, spas, grooming, laundry, tailoring, consumer photography.
+- Pet Care: vets, animal hospitals, pet shops, pet food, grooming, boarding.
+- Rent: rent, leases, property managers, real estate agencies, storage.
+- Retail: clothing, shoes, jewelry, books, florists, gifts, electronics, specialty goods.
+- Subscription TV: cable, satellite, streaming TV, paid television.
+- Telecommunications: mobile, phone, internet, broadband, network, telecom providers.
+- Transport: public transport, taxis, rideshare, parking, tolls, freight, logistics, couriers, vehicle registration.
+- Travel: hotels, holiday rentals, airlines, travel agencies, tours, cruises, car rental.
+- Utilities: electricity, gas, water, waste, taxes, council rates, government fees, fines, public services.
 
-- Bottle shops, liquor stores, bakeries, butchers, seafood shops, and food wholesalers: `Groceries`
-- Cafes, restaurants, bars, catering, take-away, prepared meals: `Dining Out`
-- Pharmacies: `Health`, even if they also sell retail goods
-- Hardware, building supplies, trades, cleaners, maintenance, security installers: `Home Improvement`
-- Passive investment/property holders: `""` unless operating a customer-facing rent/property service
-- Sports clubs: `Entertainment`; gyms, fitness studios, yoga/pilates: `Gyms and other memberships`
-- Streaming TV: `Subscription TV`; general software/SaaS/media platforms: `Information`
-- Council rates, fines, taxes, government fees: `Utilities`
+Tie-breakers:
 
-## Examples
+- Bottle shops, liquor stores, bakeries, butchers, seafood shops, and food wholesalers: `Groceries`.
+- Cafes, restaurants, bars, catering, take-away, prepared meals: `Dining Out`.
+- Pharmacies: `Health`, even when they sell general retail goods.
+- Hardware, building supplies, trades, cleaners, maintenance, security installers: `Home Improvement`.
+- Passive investment, property holding, nominee, trustee, or shell entities: `""` unless they operate a customer-facing service.
+- Sports clubs: `Entertainment`; fitness studios and gyms: `Gyms and other memberships`.
+- Streaming TV: `Subscription TV`; general software, SaaS, and media platforms: `Information`.
+- Council rates, fines, taxes, government fees: `Utilities`.
 
-| Merchant | Search finding | Category |
-|----------|----------------|----------|
-| Naked for Satan | Bar/restaurant in Melbourne | Dining Out |
-| Cellarbrations | Bottle shop / liquor store chain | Groceries |
-| Blackburn Football Club | Local football/sports club | Entertainment |
-| Chemist Warehouse | Pharmacy chain | Health |
-| BWS | Beer Wine Spirits bottle shop | Groceries |
-| Uber | Rideshare platform | Transport |
-| Bunnings Warehouse | Hardware store chain | Home Improvement |
-| Telstra | Telco provider | Telecommunications |
-| Netflix | Streaming TV service | Subscription TV |
-| BENMIREN NOMINEES PTY LTD | Generic corporate entity, no public business | "" |
-| GOCUP PASTORAL PTY LTD | No public-facing business found | "" |
-| J SMITH ENTERPRISES PTY LTD | Personal/generic enterprise, no clear business | "" |
-| Ayda Pty Ltd | ABN entry + helloayda.com (market-research platform); registry-to-brand link unconfirmed, no corroborating source | "" |
-| Noodle Box | Franchise/chain; official or franchise-list page confirms brand and activity | Dining Out |
+## Final Self-Check
 
-## Safety Rules
+Before saving, verify:
 
-- Only modify `category`, `category_source`, and `category_updated_at` values in `merchant_kb.csv`.
-- Only write to `merchant_kb.csv`, `cache/web_classify_tracking.json`, and `cache/_batch_result.json`.
-- Read CSV with `utf-8-sig`; write CSV with `utf-8-sig` to preserve Excel compatibility.
-- Use the save script for tracking updates; do not edit tracking manually.
-- If the save script fails, report the error and stop. Do not retry with different code.
+- Every batch merchant appears exactly once in `cache/_batch_result.json`.
+- Every non-empty category is from the valid list.
+- Each non-empty category has evidence for both entity match and activity.
+- Weak, passive, ambiguous, registry-only, or conflicting results are `""`.
+- The save script completed successfully.
