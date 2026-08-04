@@ -22,6 +22,7 @@ Optimize for:
 - Fast: one strong search round for most merchants, second round only with a real lead.
 - Accurate: classify only when web evidence confirms the real-world business activity.
 - Conservative: return `""` when the activity or legal-entity-to-brand link is unclear.
+- Evidence is not limited to Australia. Merchants may operate anywhere; reliable sources from any country (official sites, business registries, directories, news, maps) can support a category. Foreign same-name results are not automatically invalid — they count when they can be linked to the searched name (consistent name plus matching industry, location, or registration details) and are ignored when they cannot.
 
 ## Tracking File
 
@@ -130,18 +131,25 @@ These patterns are usually non-public corporate entities. Search Round 1 only; i
 
 #### Evidence Rules
 
-Classify only with one of these evidence patterns:
+Classify with one of these evidence patterns:
 - Official website or brand page clearly shows the activity and matches the merchant/legal name.
-- ABN Lookup/ABR shows a registered business or trading name; that trading name is then found as a real business with an activity.
+- Business registry data (ABN Lookup/ABR, ASIC, local Chamber of Commerce, company databases) shows a registered business or trading name; that name is then found as a real business with an activity — the two sources together are sufficient.
 - Franchisee/store/operator list, shopping-centre tenant page, map listing, or reputable directory links the legal entity or trading name to an operating business.
 - Legal PDF/news/database links the legal entity to a brand, and another source confirms the brand activity.
+- ≥2 independent sources converge on the same operating business with the same activity and one of them is authoritative (official page, registry, directory, map, news) — the link is then considered confirmed even without a page that explicitly ties legal name to brand.
 
 Return `""` when:
-- Results are only ABN/ASIC/company-registration pages with no trading name.
-- A brand exists but cannot be linked to the searched legal entity or trading name.
-- The name is too generic and search results conflict.
+- All results are only ABN/ASIC/company-registration pages with no trading name, and no other source mentions the entity's activity.
+- A brand exists but no source of any kind links it to the searched name.
+- The name is too generic, search results conflict, and no consistent activity wins.
 - The activity cannot be mapped confidently to exactly one valid category.
 - Only social media or weak directory snippets exist and no corroborating source is found.
+- Searches only surface same-name businesses in other countries and no source links them to the searched entity.
+
+Confirm the link before classifying:
+- If the official/brand page or registry entry itself ties the searched name to the operating business (explicit trading name, matching registration details, ABN/company number on the page), the link is confirmed.
+- Otherwise, find one corroborating source (registry entry, directory, map listing, news) that ties the searched name to the brand before classifying.
+- If no corroboration exists after Round 2, return `""` — the confidence tier below does not replace this check.
 
 #### Round 2 Triggers
 
@@ -155,7 +163,7 @@ Round 2 query options:
 - Search the trading/business name exactly.
 - Search suffix-stripped name plus one likely industry hint found from Round 1.
 - Search `"legal name" "trading as"` or `"legal name" franchise`.
-- Search the candidate brand plus Australia if the result set is global/noisy.
+- Search the candidate brand plus the country/region found in Round 1 (e.g. Australia, UK, Canada) if the result set is global/noisy.
 
 Do not run Round 2 when Round 1 found only registry pages or no meaningful lead.
 
@@ -169,11 +177,24 @@ Use sources in this order:
 5. Industry databases/SIC/ANZSIC records as supporting evidence only.
 6. News and social media as weak corroboration only.
 
+#### Confidence Tiers
+
+When the link between the searched name and an operating business is not explicit, use these tiers instead of returning `""` automatically:
+
+- **high** — official page, registry entry, or franchise/store list ties the name to the business, or ≥2 independent authoritative sources converge on the same business.
+- **medium** — one authoritative source names the business/activity, or strong same-name + matching industry evidence (e.g., one source links the name to the brand, another confirms the activity). Classify with `medium` confidence.
+- **low** — only weak sources (social media, low-quality directories) or name-only matches; activity unclear. Return `""`.
+- **empty** — no evidence at all, or foreign same-name results only, or the entity is confirmed as passive (Holdings/Nominees/investment without operations). Return `""`.
+
+Classification rule: `high` and `medium` → classify. `low` and `empty` → `""`.
+
+
+
 #### Classification Output While Searching
 
 For each merchant, keep a short internal note:
 - `category`: valid category or `""`
-- `confidence`: `high`, `medium`, or `empty`
+- `confidence`: `high`, `medium`, `low`, or `empty`
 - `evidence`: one short phrase naming the best evidence
 - `reason`: why the category was chosen or why it is empty
 
@@ -324,9 +345,9 @@ Batch N: classified=X empty=Y updated=U | total tracked=Z | [CONTINUING|ALL_DONE
 
 - Classify by actual, real-world business activity confirmed via web search.
 - Must use web search; do not guess from name fragments.
-- Prefer `""` over a weak or inferred category.
+- Prefer `""` over a weak or inferred category — but `medium`-confidence evidence (one authoritative source, or consistent name + industry match) is enough to classify.
 - For names with legal suffixes, search both full and suffix-stripped forms in the same round.
-- When ABN Lookup shows a trading/business name different from the legal name, search that trading name too.
+- When registry data shows a trading/business name different from the legal name, search that trading name too.
 - If a source only proves a legal entity exists, not what it operates, return `""`.
 - For holding/property/investment/trust entities, do not use passive asset ownership as proof of `Rent` unless the entity operates property management, leasing, real estate agency, or storage services.
 
@@ -388,6 +409,8 @@ Quick reference:
 | BENMIREN NOMINEES PTY LTD | Generic corporate entity, no public business | "" |
 | GOCUP PASTORAL PTY LTD | No public-facing business found | "" |
 | J SMITH ENTERPRISES PTY LTD | Personal/generic enterprise, no clear business | "" |
+| Ayda Pty Ltd | ABN entry + helloayda.com (market-research platform); registry-to-brand link unconfirmed, no corroborating source | "" |
+| Noodle Box | Franchise/chain; official or franchise-list page confirms brand and activity | Dining Out |
 
 ## Safety Rules
 

@@ -29,7 +29,7 @@ python verify_merchants.py --api-key "$DEEPSEEK_API_KEY" --row-limit 100 --batch
 
 ## Merchant classification (primary workflow)
 
-Use `.claude/skills/classify-merchants.md` — a self-contained skill that reads `merchant_kb.csv`, web-searches each uncategorized merchant, and writes results back. Tracks searched merchants in `cache/web_classify_tracking.json` so none are re-processed.
+Use `.claude/skills/classify-merchants/SKILL.md` — a self-contained skill that reads `merchant_kb.csv`, web-searches each uncategorized merchant, and writes results back. Tracks searched merchants in `cache/web_classify_tracking.json` so none are re-processed.
 
 ## Architecture
 
