@@ -269,6 +269,13 @@ def _clean_keywords_impl(
 
         kept.append(keyword)
 
+    # Ensure merchant_name itself is always present as a keyword.
+    if merchant_name:
+        mn_clean = " ".join(merchant_name.split())
+        mn_identity = keyword_identity(mn_clean)
+        if not any(keyword_identity(kw) == mn_identity for kw in kept):
+            kept.insert(0, mn_clean)
+
     if not kept:
         if best_fuzzy_keyword:
             kept.append(best_fuzzy_keyword)
