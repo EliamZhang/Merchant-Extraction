@@ -24,6 +24,26 @@ class ApiError(RuntimeError):
 CHINA_TIMEZONE = timezone(timedelta(hours=8))
 
 
+# ---------------------------------------------------------------------------
+# ServiFlow-AI 兼容：与 classification_core/text.py:clean_text 完全等价
+# ---------------------------------------------------------------------------
+
+_PRECLEAN_RE = re.compile(r"[^A-Z0-9]+")
+
+
+def clean_keyword_text(value: str) -> str:
+    """清洗关键词：大写 + 去除非字母数字字符 + 合并空格。
+
+    与 ServiFlow-AI ``classification_core/text.py:clean_text`` 完全等价，
+    确保关键词在 CSV 写入阶段就规范化，运行时无需再次清洗。
+    """
+    if not value:
+        return ""
+    text = value.upper()
+    text = _PRECLEAN_RE.sub(" ", text)
+    return " ".join(text.split())
+
+
 def normalize_space(value: str) -> str:
     return re.sub(r"\s+", " ", value or "").strip()
 

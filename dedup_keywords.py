@@ -34,6 +34,7 @@ from settings import (
     PAYMENT_PREFIX_WORDS,
     STOPWORDS,
 )
+from utils import clean_keyword_text
 
 
 KEYWORD_SEPARATOR: Final = " | "
@@ -176,6 +177,7 @@ def _clean_keywords_impl(
     merchant_name: str,
     *,
     collect_removed_details: bool,
+    preclean: bool = False,
 ) -> tuple[str, list[str], list[str], int, tuple[int, int, int, int, int]]:
     """
     Internal high-performance cleaner.
@@ -187,6 +189,11 @@ def _clean_keywords_impl(
         original keyword count,
         removal counters in this order:
             length, stopword, duplicate, generic, name mismatch.
+
+    When *preclean* is True, each kept keyword is additionally normalised via
+    ``clean_keyword_text`` (uppercase, strip punctuation, collapse spaces) so
+    the output CSV matches ServiFlow-AI's ``clean_text`` format, eliminating
+    the ~650k Python-level ``apply(clean_text)`` calls at runtime.
     """
     if not keywords_raw or not keywords_raw.strip():
         return "", [], [], 0, (0, 0, 0, 0, 0)
@@ -276,12 +283,38 @@ def _clean_keywords_impl(
         if not any(keyword_identity(kw) == mn_identity for kw in kept):
             kept.insert(0, mn_clean)
 
+    # ── Preclean: normalise every kept keyword to ServiFlow-AI clean_text format ──
+    if preclean:
+        cleaned_kept: list[str] = []
+        seen_clean: set[str] = set()
+        for kw in kept:
+            c = clean_keyword_text(kw)
+            if c and c not in seen_clean:
+                seen_clean.add(c)
+                cleaned_kept.append(c)
+        kept = cleaned_kept
+
+        # Re-check merchant_name presence with cleaned format.
+        if merchant_name:
+            mn_cleaned = clean_keyword_text(merchant_name)
+            if mn_cleaned and mn_cleaned not in seen_clean:
+                kept.insert(0, mn_cleaned)
+                seen_clean.add(mn_cleaned)
+
+    # ── Fallback: ensure at least one keyword ──
     if not kept:
         if best_fuzzy_keyword:
-            kept.append(best_fuzzy_keyword)
+            fallback = best_fuzzy_keyword
         elif merchant_name:
             fallback = " ".join(merchant_name.split())
-            if fallback:
+        else:
+            fallback = ""
+        if fallback:
+            if preclean:
+                fb = clean_keyword_text(fallback)
+                if fb:
+                    kept.append(fb)
+            else:
                 kept.append(fallback)
 
     return (
@@ -309,6 +342,115 @@ def clean_keywords(
         collect_removed_details=True,
     )
     return cleaned, removed, kept
+
+
+# ---------------------------------------------------------------------------
+# Standalone preclean — only clean_text(), no dedup pipeline
+# ---------------------------------------------------------------------------
+
+def preclean_keywords(
+    input_path: Path = FINAL_OUTPUT,
+    changed_since: str = "",
+) -> dict[str, int] | None:
+    """Apply ``clean_keyword_text`` to every keyword in the CSV.
+
+    Does **not** run the full dedup pipeline (stopwords, token overlap,
+    name-mismatch checks, etc.).  Only transforms keyword format (uppercase,
+    strip punctuation, collapse spaces) and deduplicates keywords that become
+    identical after normalisation.
+
+    This is the fastest way to make the CSV ready for ServiFlow-AI's
+    zero-cleanup loading path.  For a full clean + normalisation pass, combine
+    ``--full`` (preclean is now on by default; use ``--no-preclean`` to disable).
+    """
+    if not input_path.exists():
+        print(f"[preclean] {input_path} not found -- nothing to clean")
+        return None
+
+    process_all_rows = not changed_since
+    mode = "FULL" if process_all_rows else f"CHANGED SINCE {changed_since}"
+
+    total_rows = 0
+    rows_processed = 0
+    rows_changed = 0
+    temporary_path: Path | None = None
+
+    PROGRESS_EVERY = 100_000
+
+    print(f"[preclean] {mode} | input: {input_path}")
+
+    try:
+        with input_path.open(
+            "r", encoding="utf-8-sig", newline="", buffering=IO_BUFFER_SIZE,
+        ) as source:
+            reader = csv.DictReader(source)
+            input_columns = reader.fieldnames or FINAL_OUTPUT_COLUMNS
+
+            with tempfile.NamedTemporaryFile(
+                "w", encoding="utf-8", newline="", buffering=IO_BUFFER_SIZE,
+                delete=False, dir=input_path.parent,
+            ) as temporary:
+                temporary_path = Path(temporary.name)
+                writer = csv.DictWriter(
+                    temporary, fieldnames=input_columns, extrasaction="ignore",
+                )
+                writer.writeheader()
+
+                for row in reader:
+                    total_rows += 1
+
+                    if process_all_rows or row.get(
+                        "keyword_updated_at", "",
+                    ).strip() >= changed_since:
+                        rows_processed += 1
+                        keywords_raw = row.get("keywords", "")
+
+                        if keywords_raw and keywords_raw.strip():
+                            parts = [p.strip() for p in keywords_raw.split("|")]
+                            cleaned: list[str] = []
+                            seen: set[str] = set()
+                            for p in parts:
+                                if not p:
+                                    continue
+                                c = clean_keyword_text(p)
+                                if c and c not in seen:
+                                    seen.add(c)
+                                    cleaned.append(c)
+                            new_keywords = KEYWORD_SEPARATOR.join(cleaned)
+                            if new_keywords != keywords_raw:
+                                row["keywords"] = new_keywords
+                                rows_changed += 1
+
+                    writer.writerow(row)
+
+                    if total_rows % PROGRESS_EVERY == 0:
+                        print(
+                            f"  {total_rows:,} rows scanned, "
+                            f"{rows_processed:,} processed, "
+                            f"{rows_changed:,} changed"
+                        )
+
+        if temporary_path is None:
+            raise RuntimeError("Temporary output file was not created")
+        os.replace(temporary_path, input_path)
+
+    except Exception:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+        raise
+
+    stats = {
+        "total_rows": total_rows,
+        "rows_processed": rows_processed,
+        "rows_changed": rows_changed,
+    }
+    print(
+        f"[preclean] {mode} | "
+        f"rows: {total_rows:,}  "
+        f"processed: {rows_processed:,}  "
+        f"changed: {rows_changed:,}"
+    )
+    return stats
 
 
 
@@ -376,6 +518,7 @@ def process_keywords(
     now: str = "",
     report_path: Path | None = DEFAULT_REPORT_PATH,
     changed_since: str = "",
+    preclean: bool = False,
 ) -> dict[str, int] | None:
     """
     Clean the keywords column in a CSV file.
@@ -383,6 +526,10 @@ def process_keywords(
     By default all rows are processed. Pass changed_since to only process rows
     whose keyword_updated_at value is greater than or equal to that timestamp.
     The now argument is kept for backward-compatible callers and is not used.
+
+    When *preclean* is True, every kept keyword is further normalised via
+    ``clean_keyword_text`` (uppercase, strip punctuation, collapse spaces) so
+    ServiFlow-AI can load the CSV without its own ``apply(clean_text)`` step.
     """
     del now
 
@@ -391,6 +538,8 @@ def process_keywords(
         return None
 
     mode = "FULL" if full_clean or not changed_since else f"CHANGED SINCE {changed_since}"
+    if preclean:
+        mode += " + PRECLEAN"
     collect_removed_details = report_path is not None
 
     report_heap: list[tuple[int, int, dict[str, str]]] = []
@@ -464,6 +613,7 @@ def process_keywords(
                             keywords_raw,
                             merchant_name,
                             collect_removed_details=collect_removed_details,
+                            preclean=preclean,
                         )
 
                         if clean_str != keywords_raw:
@@ -588,14 +738,34 @@ def main() -> None:
         action="store_true",
         help="Clean all rows. This is the default when --changed-since is omitted.",
     )
+    parser.add_argument(
+        "--no-preclean",
+        action="store_false",
+        dest="preclean",
+        default=True,
+        help=(
+            "Disable preclean (normalisation to ServiFlow-AI clean_text format). "
+            "By default, preclean is always applied: "
+            "without --full: normalisation only (fastest, skips dedup pipeline); "
+            "with --full: full dedup + normalisation."
+        ),
+    )
     args = parser.parse_args()
 
-    process_keywords(
-        input_path=args.input,
-        full_clean=args.full or not args.changed_since,
-        report_path=None if args.no_report else args.report,
-        changed_since=args.changed_since,
-    )
+    if args.preclean and not args.full:
+        # Standalone preclean — fastest path, no dedup pipeline overhead.
+        preclean_keywords(
+            input_path=args.input,
+            changed_since=args.changed_since,
+        )
+    else:
+        process_keywords(
+            input_path=args.input,
+            full_clean=args.full or not args.changed_since,
+            report_path=None if args.no_report else args.report,
+            changed_since=args.changed_since,
+            preclean=args.preclean,
+        )
 
 
 if __name__ == "__main__":
