@@ -37,7 +37,7 @@ from settings import (
 from utils import clean_keyword_text
 
 
-KEYWORD_SEPARATOR: Final = " | "
+KEYWORD_SEPARATOR: Final = "|"
 REPORT_LIMIT: Final = 500
 IO_BUFFER_SIZE: Final = 1024 * 1024
 RAW_STRING_SIMILARITY_THRESHOLD: Final = 0.55

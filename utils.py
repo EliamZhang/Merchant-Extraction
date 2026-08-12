@@ -53,7 +53,7 @@ def normalize_search_text(value: str) -> str:
     return normalize_space(cleaned).casefold()
 
 
-KEYWORD_SEPARATOR = " | "
+KEYWORD_SEPARATOR = "|"
 
 
 def split_kb_keywords(value: str) -> list[str]:
